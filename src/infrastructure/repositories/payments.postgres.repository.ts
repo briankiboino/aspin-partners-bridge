@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { DataSource } from 'typeorm';
-import { PaymentRepository } from '../../domain/repositories/payments.repository';
+import { PaymentRepository } from '../../domain/repositories/payments.postgres.repository';
 import { PaymentEntity as Payment } from 'src/domain/entities/payments.entity';
 
 @Injectable()
