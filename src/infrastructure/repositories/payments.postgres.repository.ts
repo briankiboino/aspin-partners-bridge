@@ -35,6 +35,10 @@ export class PaymentRepositoryImpl implements PaymentRepository {
     await this.repository.update({ transactionId: id }, { processed: true });
   }
 
+  async updateStatus(id: string, status: string): Promise<void> {
+    await this.repository.update({ transactionId: id }, { status });
+  }
+
   async isProcessed(id: string): Promise<boolean> {
     const result = await this.repository.findOneBy({ transactionId: id });
     return !!result?.processed;

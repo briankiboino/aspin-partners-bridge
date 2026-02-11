@@ -2,10 +2,13 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { PaymentsProcessor } from './payments.processor';
 import { RedisProvider } from '../database/redis.provider';
-import { PaymentRepository } from '../repositories/payments.repository.pg';
-import { PaymentRepositoryRedis } from '../repositories/payments.repository.redis';
-import { PaymentHubAdapterImpl } from '../adapters/paymenthub.adapter.impl';
-import { AspinAdapter } from '../../application/interfaces/aspin.adapter.interface';
+import { PaymentRepositoryImpl } from '../repositories/payments.postgres.repository';
+import { PaymentsCacheRepositoryImpl } from '../repositories/payments.redis.repository';
+import { PaymentHubAdapterImpl } from '../adapters/paymenthub.adapter';
+import { AspinAdapterImpl } from '../adapters/aspin.adapter';
+import { QueueServiceImpl } from './queue.service';
+import { MockSecretsManagerService } from '../services/secrets.manager.service';
+import { PartnerConfigurationsRepositoryImpl } from '../repositories/partner.configurations.repository';
 
 @Module({
   imports: [
@@ -22,11 +25,35 @@ import { AspinAdapter } from '../../application/interfaces/aspin.adapter.interfa
   providers: [
     PaymentsProcessor,
     RedisProvider,
-    PaymentRepository,
-    PaymentRepositoryRedis,
-    PaymentHubAdapterImpl,
-    AspinAdapter,
+    PaymentRepositoryImpl,
+    PaymentsCacheRepositoryImpl,
+    {
+      provide: 'PaymentHubAdapter',
+      useClass: PaymentHubAdapterImpl,
+    },
+    {
+      provide: 'AspinAdapter',
+      useClass: AspinAdapterImpl,
+    },
+    {
+      provide: 'QueueService',
+      useClass: QueueServiceImpl,
+    },
+    {
+      provide: 'SecretsManager',
+      useClass: MockSecretsManagerService,
+    },
+    {
+      provide: 'PartnerConfigurationsRepository',
+      useClass: PartnerConfigurationsRepositoryImpl,
+    },
   ],
-  exports: [BullModule],
+  exports: [
+    BullModule,
+    'QueueService',
+    'PaymentHubAdapter',
+    'AspinAdapter',
+    'PartnerConfigurationsRepository',
+  ],
 })
 export class BullMQModule {}
