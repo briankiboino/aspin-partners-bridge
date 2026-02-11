@@ -3,11 +3,15 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import {
+  CheckPaymentPayload,
   InitiatePaymentPayload,
-  PaymentHubWebhookPayload,
-} from '../../application/dto/input/payments';
-import { PaymentHubResponse } from '../../application/dto/output/payments';
+} from '../../application/dto/payments/input';
+import {
+  PaymentInitiationResponse,
+  PaymentNotificationResponse,
+} from '../../application/dto/payments/output';
 import { PaymentHubException } from '../../shared/exceptions/payment.exceptions';
+import { PaymentHubAdapter } from '../../application/interfaces/paymenthub.adapter.interface';
 
 type HTTPRequestConfig = {
   path: string;
@@ -17,8 +21,8 @@ type HTTPRequestConfig = {
 };
 
 @Injectable()
-export class PaymentHubAdapterImpl {
-  private readonly logger = new Logger(PaymentHubAdapter.name);
+export class PaymentHubAdapterImpl implements PaymentHubAdapter {
+  private readonly logger = new Logger(PaymentHubAdapterImpl.name);
   private readonly baseUrl: string;
   private readonly apiKey: string;
 
@@ -60,8 +64,8 @@ export class PaymentHubAdapterImpl {
 
   async initiatePayment(
     payload: InitiatePaymentPayload,
-  ): Promise<PaymentHubResponse> {
-    const response: PaymentHubResponse = await this.makeHttpRequest({
+  ): Promise<PaymentInitiationResponse> {
+    const response: PaymentInitiationResponse = await this.makeHttpRequest({
       path: 'payments/initiate',
       method: 'POST',
       payload,
@@ -74,32 +78,17 @@ export class PaymentHubAdapterImpl {
     return response;
   }
 
-  async handleWebhook(
-    payload: PaymentHubWebhookPayload,
-  ): Promise<PaymentHubResponse> {
-    if (!payload?.transaction_id || !payload?.status) {
-      throw new PaymentHubException('Invalid webhook payload');
-    }
-
-    return {
-      transaction_id: payload.transaction_id,
-      status: payload.status,
-      amount: payload.amount,
-      currency: payload.currency,
-      timestamp: payload.timestamp,
-    };
-  }
-
-  async checkPayment(transactionId: string): Promise<PaymentHubResponse> {
-    const response: PaymentHubResponse = await this.makeHttpRequest({
-      path: `payments/${transactionId}/status`,
+  async checkPayment(
+    payload: CheckPaymentPayload,
+  ): Promise<PaymentNotificationResponse> {
+    const response: PaymentNotificationResponse = await this.makeHttpRequest({
+      path: `payments/${payload.transactionId}/status`,
       method: 'GET',
     });
 
     if (!response?.transaction_id) {
       throw new PaymentHubException('Payment not found');
     }
-
     return response;
   }
 }

@@ -9,6 +9,7 @@ import {
   Post,
   Get,
   Param,
+  Query,
 } from '@nestjs/common';
 import { instanceToPlain } from 'class-transformer';
 import { Response } from 'express';
@@ -23,6 +24,10 @@ import {
   InitiatePaymentPayload,
   PaymentHubWebhookPayload,
 } from '../../application/dto/payments/input';
+import {
+  PaymentChannel,
+  PaymentNotificationStatus,
+} from 'src/shared/constants/payments';
 
 @Controller('api/v1/user/payments')
 @UseGuards(ApiKeyGuard, AuthenticationGuard)
@@ -41,7 +46,8 @@ export class PaymentsController {
         currency: dto.currency,
         customer_id: dto.customer_id,
         reference: dto.reference,
-        metadata: dto.metadata,
+        channel: dto.channel,
+        partner_id: dto.partner_id,
       };
 
       const data = await this.paymentsUseCase.initiatePayment(payload);
@@ -67,13 +73,20 @@ export class PaymentsController {
   }
 
   @Post('/webhook')
-  async handleWebhook(@Res() res: Response, @Body() dto: PaymentHubWebhookDto) {
+  async handleWebhook(
+    @Res() res: Response,
+    @Body() dto: PaymentHubWebhookDto,
+    @Query('partnerId') partnerId: string,
+  ) {
     try {
       const payload: PaymentHubWebhookPayload = {
         transaction_id: dto.transaction_id,
-        status: dto.status,
-        reference: dto.reference,
-        metadata: dto.metadata,
+        status: dto.status as PaymentNotificationStatus,
+        partner_id: partnerId,
+        amount: dto.amount,
+        currency: dto.currency,
+        timestamp: dto.timestamp,
+        signature: dto.signature,
       };
 
       const data = await this.paymentsUseCase.handleWebhook(payload);
@@ -82,7 +95,7 @@ export class PaymentsController {
         res,
         HttpStatus.OK,
         true,
-        'Webhook processed successfully',
+        'Payment notification processed successfully',
         null,
         instanceToPlain(data),
       );
@@ -98,13 +111,17 @@ export class PaymentsController {
     }
   }
 
-  @Get('/:transactionId')
+  @Get('/:transactionId/:channel')
   async checkPayment(
     @Res() res: Response,
     @Param('transactionId') transactionId: string,
+    @Param('channel') channel: PaymentChannel,
   ) {
     try {
-      const data = await this.paymentsUseCase.checkPayment(transactionId);
+      const data = await this.paymentsUseCase.checkPayment(
+        transactionId,
+        channel,
+      );
 
       return buildResponse(
         res,
