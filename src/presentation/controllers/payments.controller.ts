@@ -1,7 +1,6 @@
 import {
   Controller,
   Res,
-  UseGuards,
   HttpStatus,
   UseFilters,
   Inject,
@@ -14,8 +13,6 @@ import {
 import { instanceToPlain } from 'class-transformer';
 import { Response } from 'express';
 import { buildResponse } from '../../shared/utils/helpers';
-import { ApiKeyGuard } from '../guards/api.key.guard';
-import { AuthenticationGuard } from '../guards/authentication.guard';
 import { ValidationFilter } from '../filters/validation.filter';
 import { PaymentsUseCase } from '../../application/interfaces/payments.usecases.interface';
 import {
@@ -27,7 +24,6 @@ import {
 import { PaymentNotificationStatus } from 'src/shared/constants/payments';
 
 @Controller('api/v1/user/payments')
-@UseGuards(ApiKeyGuard, AuthenticationGuard)
 @UseFilters(ValidationFilter)
 export class PaymentsController {
   constructor(

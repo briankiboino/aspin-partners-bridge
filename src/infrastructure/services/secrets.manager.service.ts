@@ -1,12 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { SecretsManager } from '../../application/interfaces/secrets.manager.interface';
 
 @Injectable()
 export class MockSecretsManagerService implements SecretsManager {
-  private readonly logger = new Logger(MockSecretsManagerService.name);
-
   async getSecret(secretId: string): Promise<Record<string, any>> {
-    this.logger.log(`Retrieving secret for: ${secretId}`);
     if (secretId.includes('airtel') && !secretId.startsWith('default_')) {
       return {
         client_id: 'mock_airtel_client_id',
