@@ -8,6 +8,7 @@ import { QueueService } from 'src/application/interfaces/queue.interface';
 import { PaymentRepositoryImpl } from '../../repositories/payments.postgres.repository';
 import { QueueServiceImpl } from '../../queue/queue.service.impl';
 import { AspinAdapter } from 'src/application/interfaces/aspin.adapter.interface';
+import { MetricsService } from '../../monitoring/metrics.service';
 
 @Injectable()
 export class BritamAirtelExecutor extends BasePaymentExecutor {
@@ -16,9 +17,16 @@ export class BritamAirtelExecutor extends BasePaymentExecutor {
     @Inject(forwardRef(() => QueueServiceImpl)) queueService: QueueService,
     rabbitmqService: RabbitMQService,
     @Inject('AspinAdapter') aspinAdapter: AspinAdapter,
+    metricsService: MetricsService,
     private readonly britamAirtelChannel: BritamAirtelChannel,
   ) {
-    super(paymentRepository, queueService, rabbitmqService, aspinAdapter);
+    super(
+      paymentRepository,
+      queueService,
+      rabbitmqService,
+      aspinAdapter,
+      metricsService,
+    );
   }
 
   getPartner(): string {
