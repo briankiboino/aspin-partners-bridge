@@ -7,6 +7,7 @@ import { ChannelsModule } from '../channels/channels.module';
 import { RepositoryModule } from '../repositories/repository.module';
 import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 import { BullMQModule } from '../queue/bullmq.module';
+import { AdaptersModule } from '../adapters/adapters.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BullMQModule } from '../queue/bullmq.module';
     RepositoryModule,
     RabbitMQModule,
     forwardRef(() => BullMQModule),
+    AdaptersModule,
   ],
   providers: [
     PaymentExecutorBuilder,

@@ -20,6 +20,7 @@ import { QueueService } from '../../application/interfaces/queue.interface';
 import { PaymentRepositoryImpl } from '../repositories/payments.postgres.repository';
 import { AspinAdapter } from '../../application/interfaces/aspin.adapter.interface';
 import { PaymentNotificationResponse } from '../../application/dto/payments/output';
+import { MetricsService } from '../monitoring/metrics.service';
 import * as crypto from 'crypto';
 
 export abstract class BasePaymentExecutor implements IPaymentExecutor {
@@ -34,6 +35,7 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
     protected readonly rabbitmqService: RabbitMQService,
     @Inject('AspinAdapter')
     protected readonly aspinAdapter: AspinAdapter,
+    protected readonly metricsService: MetricsService,
   ) {}
 
   abstract getPartner(): string;
@@ -43,6 +45,10 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
   async initiate(
     payload: PaymentInitiationPayload,
   ): Promise<PaymentInitiationResponse> {
+    this.metricsService.incrementPaymentInitiated(
+      payload.partnerId,
+      this.getChannel(),
+    );
     this.logger.log(
       `Initiating payment for partner ${this.getPartner()} via ${this.getChannel()}`,
     );
@@ -57,23 +63,59 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
 
       let channelResponse;
 
-      if (this.getChannel() === PaymentChannel.MPESA) {
-        const mpesaChannel = this.getChannelImplementation() as IMpesaChannel;
-        channelResponse = await mpesaChannel.stkPush({
-          phoneNumber: payload.customerId,
-          amount: payload.amount,
-          accountReference: payload.reference,
-          transactionDesc: `Payment for ${this.getPartner()}`,
-          partnerId: payload.partnerId,
-        });
-      } else if (this.getChannel() === PaymentChannel.AIRTEL) {
-        const airtelChannel = this.getChannelImplementation() as IAirtelChannel;
-        channelResponse = await airtelChannel.directDebit({
-          phoneNumber: payload.customerId,
-          amount: payload.amount,
-          reference: payload.reference,
-          partnerId: payload.partnerId,
-        });
+      try {
+        this.metricsService.incrementApiCall(
+          payload.partnerId,
+          this.getChannel(),
+        );
+
+        if (this.getChannel() === PaymentChannel.MPESA) {
+          const mpesaChannel = this.getChannelImplementation() as IMpesaChannel;
+          channelResponse = await mpesaChannel.stkPush({
+            phoneNumber: payload.customerId,
+            amount: payload.amount,
+            accountReference: payload.reference,
+            transactionDesc: `Payment for ${this.getPartner()}`,
+            partnerId: payload.partnerId,
+          });
+        } else if (this.getChannel() === PaymentChannel.AIRTEL) {
+          const airtelChannel =
+            this.getChannelImplementation() as IAirtelChannel;
+          channelResponse = await airtelChannel.directDebit({
+            phoneNumber: payload.customerId,
+            amount: payload.amount,
+            reference: payload.reference,
+            partnerId: payload.partnerId,
+          });
+        }
+      } catch (error) {
+        if (error.response) {
+          const status = error.response.status;
+          if (status >= 400 && status < 500) {
+            this.metricsService.incrementApiError4xx(
+              payload.partnerId,
+              this.getChannel(),
+              status,
+            );
+          } else if (status >= 500) {
+            this.metricsService.incrementApiError5xx(
+              payload.partnerId,
+              this.getChannel(),
+              status,
+            );
+          }
+        } else if (error.code === 'ECONNREFUSED') {
+          this.metricsService.incrementConnectionRefused(
+            payload.partnerId,
+            this.getChannel(),
+          );
+        } else if (error.code === 'ETIMEDOUT') {
+          this.metricsService.incrementApiTimeout(
+            payload.partnerId,
+            this.getChannel(),
+          );
+        }
+        throw error;
       }
 
       const transactionId =
@@ -181,6 +223,8 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         throw new Error(`Transaction not found: ${transactionId}`);
       }
 
+      this.metricsService.incrementWebhookReceived(payment.partner_id);
+
       if (payment.processed) {
         this.logger.warn(
           `Duplicate callback for transaction: ${transactionId}`,
@@ -216,6 +260,23 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
 
       await this.publishPaymentResult(payment, status);
 
+      this.metricsService.incrementWebhookProcessed(payment.partner_id, status);
+
+      if (status === 'completed') {
+        this.metricsService.incrementPaymentSuccess(
+          payment.partner_id,
+          payment.channel as string,
+        );
+        const duration =
+          (new Date().getTime() - payment.createdAt.getTime()) / 1000;
+        this.metricsService.recordPaymentDuration(
+          payment.partner_id,
+          payment.channel as string,
+          status,
+          duration,
+        );
+      }
+
       return {
         transactionId,
         status,
@@ -225,6 +286,10 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         isValid: true,
       };
     } catch (error) {
+      this.metricsService.incrementWebhookFailed(
+        this.getPartner(),
+        error.message || 'unknown',
+      );
       this.logger.error(
         `Callback handling failed: ${error.message}`,
         error.stack,

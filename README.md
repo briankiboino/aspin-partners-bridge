@@ -8,6 +8,7 @@ Key features include:
 - **Unified Payment Interface**: Single API for initiating payments across different partners and channels.
 - **Multi-Channel Support**: Seamless integration with Mpesa and Airtel Money.
 - **Asynchronous Processing**: Reliable event-driven architecture using RabbitMQ for notifications and BullMQ for delayed tasks (e.g., proactive status checks).
+- **Observability**: Comprehensive monitoring via Prometheus metrics and real-time error tracking with Sentry.
 - **Security**: Request validation, webhook signature verification (HMAC-SHA256), and secure secret management.
 
 ## Tech Stack
@@ -17,6 +18,7 @@ Key features include:
 - **Database**: PostgreSQL (via TypeORM)
 - **Message Broker**: RabbitMQ (for event sourcing)
 - **Job Queue**: Redis & BullMQ (for delayed status checks and retries)
+- **Monitoring**: Prometheus (Metrics), Sentry (Error Tracking & Profiling)
 - **Infrastructure**: Docker & Docker Compose
 - **Testing**: Jest (Unit & Integration)
 - **Package Manager**: pnpm
@@ -61,6 +63,11 @@ Channel implementations (`BaseMpesaChannel`, `BaseAirtelChannel`) are designed t
 ### 4. Robust Status Synchronization
 - **Webhooks**: Handles real-time notifications from the Payment Hub.
 - **Proactive Polling**: Automatically schedules a delayed job (via BullMQ) to check payment status if a final state isn't received immediately, ensuring data consistency.
+
+### 5. Monitoring & Observability
+- **Metrics (Prometheus)**: The system exposes key business and performance metrics (e.g., `payments_success_rate`, `payment_processing_duration`, `api_error_rate`) at `/metrics`.
+- **Error Tracking (Sentry)**: Integrated Sentry SDK captures unhandled exceptions and performance profiles, providing deep visibility into runtime issues.
+- **Instrumentation**: Custom instrumentation is applied to the payment execution flow to track latencies and success rates across different partners and channels.
 
 ## Installation
 
