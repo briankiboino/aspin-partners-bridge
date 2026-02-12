@@ -4,6 +4,6 @@ export enum QueueTYPE {
 
 export enum JobTYPE {
   PAYMENTS = 'payments',
-  PAYMENT_NOTIFICATION = 'payment_notifications',
-  PAYMENT_STATUS_CHECK = 'payment_status_check',
+  PAYMENT_NOTIFICATION = 'payment-notifications',
+  PAYMENT_STATUS_CHECK = 'payment-status-check',
 }

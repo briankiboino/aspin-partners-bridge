@@ -15,3 +15,22 @@ export interface PaymentNotificationResponse {
   timestamp: string;
   signature: string;
 }
+
+export class InitiatePaymentResponseData {
+  transaction_id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  timestamp: Date | string;
+}
+
+export class InitiatePaymentResponse {
+  success: boolean;
+  data: InitiatePaymentResponseData;
+}
+
+export class WebhookProcessingResponse {
+  transaction_id: string;
+  status: string;
+  processed: boolean;
+}

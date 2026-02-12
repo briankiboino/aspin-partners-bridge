@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { PartnerConfigurationsRepository } from '../../domain/repositories/partner.configurations.repository';
-import { PartnerConfiguration } from '../../domain/entities/partner.configuration.entity';
+import { PartnerConfigurationEntity } from '../../domain/entities/partner.configuration.entity';
 import { SecretsManager } from '../../application/interfaces/secrets.manager.interface';
+import { PaymentChannel } from 'src/shared/constants/payments';
 
 @Injectable()
 export class PartnerConfigurationsRepositoryImpl
@@ -11,12 +12,14 @@ export class PartnerConfigurationsRepositoryImpl
     PartnerConfigurationsRepositoryImpl.name,
   );
 
-  constructor(private readonly secretsManager: SecretsManager) {}
+  constructor(
+    @Inject('SecretsManager') private readonly secretsManager: SecretsManager,
+  ) {}
 
   async getConfig(
     partnerId: string,
-    channel: string,
-  ): Promise<PartnerConfiguration | null> {
+    channel: PaymentChannel,
+  ): Promise<PartnerConfigurationEntity | null> {
     this.logger.log(
       `Fetching configuration for partner: ${partnerId} on channel: ${channel}`,
     );
@@ -30,7 +33,7 @@ export class PartnerConfigurationsRepositoryImpl
         return null;
       }
 
-      const partnerConfig = new PartnerConfiguration();
+      const partnerConfig = new PartnerConfigurationEntity();
       partnerConfig.partnerId = partnerId;
       partnerConfig.channel = channel;
       partnerConfig.config = config;
@@ -45,8 +48,8 @@ export class PartnerConfigurationsRepositoryImpl
   }
 
   async getDefaultConfig(
-    channel: string,
-  ): Promise<PartnerConfiguration | null> {
+    channel: PaymentChannel,
+  ): Promise<PartnerConfigurationEntity | null> {
     this.logger.log(`Fetching default configuration for channel: ${channel}`);
 
     try {
@@ -58,7 +61,7 @@ export class PartnerConfigurationsRepositoryImpl
         return null;
       }
 
-      const partnerConfig = new PartnerConfiguration();
+      const partnerConfig = new PartnerConfigurationEntity();
       partnerConfig.partnerId = 'default';
       partnerConfig.channel = channel;
       partnerConfig.config = config;

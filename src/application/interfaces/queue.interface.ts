@@ -1,12 +1,22 @@
-import { JobTYPE } from 'src/shared/constants/queue';
-import {
-  InitiatePaymentPayload,
-  PaymentHubWebhookPayload,
-} from '../dto/payments/input';
+import { PaymentChannel } from 'src/shared/constants/payments';
+
+export interface StatusCheckJobData {
+  transactionId: string;
+  partnerId: string;
+  channel: PaymentChannel;
+}
+
+export interface StatusCheckJobOptions {
+  delay?: number;
+}
 
 export interface QueueService {
-  enqueueWebhook(
-    job: JobTYPE,
-    payload: PaymentHubWebhookPayload | InitiatePaymentPayload,
+  addStatusCheckJob(
+    data: StatusCheckJobData,
+    options?: StatusCheckJobOptions,
   ): Promise<void>;
+
+  getQueueStats(): Promise<any>;
+
+  close(): Promise<void>;
 }

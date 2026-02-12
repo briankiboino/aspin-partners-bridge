@@ -24,10 +24,7 @@ import {
   InitiatePaymentPayload,
   PaymentHubWebhookPayload,
 } from '../../application/dto/payments/input';
-import {
-  PaymentChannel,
-  PaymentNotificationStatus,
-} from 'src/shared/constants/payments';
+import { PaymentNotificationStatus } from 'src/shared/constants/payments';
 
 @Controller('api/v1/user/payments')
 @UseGuards(ApiKeyGuard, AuthenticationGuard)
@@ -115,13 +112,9 @@ export class PaymentsController {
   async checkPayment(
     @Res() res: Response,
     @Param('transactionId') transactionId: string,
-    @Param('channel') channel: PaymentChannel,
   ) {
     try {
-      const data = await this.paymentsUseCase.checkPayment(
-        transactionId,
-        channel,
-      );
+      const data = await this.paymentsUseCase.checkPayment(transactionId);
 
       return buildResponse(
         res,

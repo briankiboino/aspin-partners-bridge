@@ -1,15 +1,18 @@
-import { CheckPaymentPayload } from '../dto/payments/input';
-import { InitiatePaymentPayload } from '../dto/payments/input';
 import {
-  PaymentInitiationResponse,
-  PaymentNotificationResponse,
-} from '../dto/payments/output';
+  PaymentHubAirtelRequest,
+  PaymentHubAirtelResponse,
+  PaymentHubMpesaRequest,
+  PaymentHubMpesaResponse,
+  PaymentHubStatusResponse,
+} from 'src/infrastructure/adapters/paymenthub.adapter';
 
 export interface PaymentHubAdapter {
-  initiatePayment(
-    payload: InitiatePaymentPayload,
-  ): Promise<PaymentInitiationResponse>;
-  checkPayment(
-    payload: CheckPaymentPayload,
-  ): Promise<PaymentNotificationResponse>;
+  initiateMpesaPayment(
+    payload: PaymentHubMpesaRequest,
+  ): Promise<PaymentHubMpesaResponse>;
+  initiateAirtelPayment(
+    payload: PaymentHubAirtelRequest,
+  ): Promise<PaymentHubAirtelResponse>;
+  queryMpesaStatus(transactionId: string): Promise<PaymentHubStatusResponse>;
+  queryAirtelStatus(transactionId: string): Promise<PaymentHubStatusResponse>;
 }

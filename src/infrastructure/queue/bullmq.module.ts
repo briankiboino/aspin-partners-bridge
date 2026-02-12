@@ -1,59 +1,37 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { PaymentsProcessor } from './payments.processor';
+import { RedisModule } from '../database/redis.module';
 import { RedisProvider } from '../database/redis.provider';
-import { PaymentRepositoryImpl } from '../repositories/payments.postgres.repository';
-import { PaymentsCacheRepositoryImpl } from '../repositories/payments.redis.repository';
-import { PaymentHubAdapterImpl } from '../adapters/paymenthub.adapter';
-import { AspinAdapterImpl } from '../adapters/aspin.adapter';
-import { QueueServiceImpl } from './queue.service';
-import { MockSecretsManagerService } from '../services/secrets.manager.service';
-import { PartnerConfigurationsRepositoryImpl } from '../repositories/partner.configurations.repository';
+import { QueueServiceImpl } from './queue.service.impl';
+import { QueueTYPE } from 'src/shared/constants/queue';
+import { RepositoryModule } from '../repositories/repository.module';
+import { AdaptersModule } from '../adapters/adapters.module';
+import { PaymentExecutorsModule } from '../executors/payment.executors.module';
 
 @Module({
   imports: [
-    BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: Number(process.env.REDIS_PORT) || 6379,
-      },
+    RedisModule,
+    RepositoryModule,
+    AdaptersModule,
+    forwardRef(() => PaymentExecutorsModule),
+    BullModule.forRootAsync({
+      imports: [RedisModule],
+      useFactory: async (redisProvider: RedisProvider) => ({
+        connection: redisProvider.getRedisOptions(),
+      }),
+      inject: [RedisProvider],
     }),
     BullModule.registerQueue({
-      name: 'payments',
+      name: QueueTYPE.PAYMENTS,
     }),
   ],
   providers: [
-    PaymentsProcessor,
-    RedisProvider,
-    PaymentRepositoryImpl,
-    PaymentsCacheRepositoryImpl,
-    {
-      provide: 'PaymentHubAdapter',
-      useClass: PaymentHubAdapterImpl,
-    },
-    {
-      provide: 'AspinAdapter',
-      useClass: AspinAdapterImpl,
-    },
+    QueueServiceImpl,
     {
       provide: 'QueueService',
-      useClass: QueueServiceImpl,
-    },
-    {
-      provide: 'SecretsManager',
-      useClass: MockSecretsManagerService,
-    },
-    {
-      provide: 'PartnerConfigurationsRepository',
-      useClass: PartnerConfigurationsRepositoryImpl,
+      useExisting: QueueServiceImpl,
     },
   ],
-  exports: [
-    BullModule,
-    'QueueService',
-    'PaymentHubAdapter',
-    'AspinAdapter',
-    'PartnerConfigurationsRepository',
-  ],
+  exports: [BullModule, QueueServiceImpl, 'QueueService'],
 })
 export class BullMQModule {}

@@ -16,6 +16,9 @@ export class PaymentEntity {
   partner_id: string;
 
   @Column()
+  reference: string;
+
+  @Column()
   channel: string | PaymentChannel;
 
   @Column()
