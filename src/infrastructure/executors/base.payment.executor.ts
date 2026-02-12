@@ -1,21 +1,26 @@
-import { Logger, Inject, forwardRef } from '@nestjs/common';
+import { Logger, Inject } from '@nestjs/common';
 import {
   PaymentCallbackResponse,
   PaymentInitiationPayload,
   PaymentInitiationResponse,
   PaymentStatusResponse,
-} from 'src/application/dto/payments/executor.dto';
-import { IPaymentExecutor } from 'src/application/interfaces/payment.executor.interface';
-import { PaymentChannel } from 'src/shared/constants/payments';
+} from '../../application/dto/payments/executor.dto';
+import { IPaymentExecutor } from '../../application/interfaces/payment.executor.interface';
+import {
+  PaymentChannel,
+  PaymentNotificationStatus,
+} from '../../shared/constants/payments';
 import {
   IMpesaChannel,
   IAirtelChannel,
-} from 'src/application/interfaces/channel.interface';
-import { PaymentRepository } from 'src/domain/repositories/payments.postgres.repository';
+} from '../../application/interfaces/channel.interface';
+import { PaymentRepository } from '../../domain/repositories/payments.postgres.repository';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
-import { QueueService } from 'src/application/interfaces/queue.interface';
+import { QueueService } from '../../application/interfaces/queue.interface';
 import { PaymentRepositoryImpl } from '../repositories/payments.postgres.repository';
-import { QueueServiceImpl } from '../queue/queue.service.impl';
+import { AspinAdapter } from '../../application/interfaces/aspin.adapter.interface';
+import { PaymentNotificationResponse } from '../../application/dto/payments/output';
+import * as crypto from 'crypto';
 
 export abstract class BasePaymentExecutor implements IPaymentExecutor {
   protected readonly logger = new Logger(this.constructor.name);
@@ -23,9 +28,12 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
   constructor(
     @Inject(PaymentRepositoryImpl)
     protected readonly paymentRepository: PaymentRepository,
-    @Inject(forwardRef(() => QueueServiceImpl))
+    @Inject('QueueService')
     protected readonly queueService: QueueService,
+    @Inject(RabbitMQService)
     protected readonly rabbitmqService: RabbitMQService,
+    @Inject('AspinAdapter')
+    protected readonly aspinAdapter: AspinAdapter,
   ) {}
 
   abstract getPartner(): string;
@@ -277,5 +285,31 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
     this.logger.log(
       `Published payment result to RabbitMQ for ${payment.partner_id}`,
     );
+
+    try {
+      const aspinStatus =
+        status === 'completed'
+          ? PaymentNotificationStatus.SUCCESS
+          : PaymentNotificationStatus.FAILED;
+
+      const aspinPayload: PaymentNotificationResponse = {
+        transaction_id: payment.transactionId,
+        status: aspinStatus,
+        amount: payment.amount,
+        currency: payment.currency,
+        timestamp: event.timestamp,
+        signature: crypto
+          .createHmac('sha256', 'aspin-secret')
+          .update(payment.transactionId + status)
+          .digest('hex'),
+      };
+
+      await this.aspinAdapter.notifyPaymentStatus(aspinPayload);
+      this.logger.log(
+        `Notified Aspin of payment status: ${payment.transactionId}`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to notify Aspin: ${error.message}`);
+    }
   }
 }

@@ -7,6 +7,7 @@ import { PaymentRepository } from 'src/domain/repositories/payments.postgres.rep
 import { QueueService } from 'src/application/interfaces/queue.interface';
 import { PaymentRepositoryImpl } from '../../repositories/payments.postgres.repository';
 import { QueueServiceImpl } from '../../queue/queue.service.impl';
+import { AspinAdapter } from 'src/application/interfaces/aspin.adapter.interface';
 
 @Injectable()
 export class ApaMpesaExecutor extends BasePaymentExecutor {
@@ -14,9 +15,10 @@ export class ApaMpesaExecutor extends BasePaymentExecutor {
     @Inject(PaymentRepositoryImpl) paymentRepository: PaymentRepository,
     @Inject(forwardRef(() => QueueServiceImpl)) queueService: QueueService,
     rabbitmqService: RabbitMQService,
+    @Inject('AspinAdapter') aspinAdapter: AspinAdapter,
     private readonly apaMpesaChannel: ApaMpesaChannel,
   ) {
-    super(paymentRepository, queueService, rabbitmqService);
+    super(paymentRepository, queueService, rabbitmqService, aspinAdapter);
   }
 
   getPartner(): string {

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, Min } from 'class-validator';
 import {
   PaymentChannel,
   PaymentNotificationStatus,
@@ -19,6 +19,7 @@ export interface InitiatePaymentPayload {
 export class InitiatePaymentDto {
   @IsNumber()
   @IsNotEmpty()
+  @Min(1)
   amount: number;
 
   @IsString()
@@ -63,6 +64,7 @@ export class PaymentHubWebhookDto {
 
   @IsNumber()
   @IsNotEmpty()
+  @Min(1)
   amount: number;
 
   @IsString()
