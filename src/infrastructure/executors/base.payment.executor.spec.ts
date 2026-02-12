@@ -12,6 +12,7 @@ import { BasePaymentExecutor } from './base.payment.executor';
 import { PaymentRepositoryImpl } from '../repositories/payments.postgres.repository';
 import { QueueServiceImpl } from '../queue/queue.service.impl';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
+import { MetricsService } from '../monitoring/metrics.service';
 import { PaymentChannel } from '../../shared/constants/payments';
 import {
   IMpesaChannel,
@@ -36,9 +37,10 @@ class TestExecutor extends BasePaymentExecutor {
     queue: any,
     rabbit: any,
     aspin: any,
+    metrics: any,
     private channelImplementation: any,
   ) {
-    super(repository, queue, rabbit, aspin);
+    super(repository, queue, rabbit, aspin, metrics);
   }
 }
 
@@ -48,6 +50,7 @@ describe('BasePaymentExecutor', () => {
   let queueService: any;
   let rabbitmqService: any;
   let aspinAdapter: any;
+  let metricsService: any;
   let mockChannel: any;
 
   beforeEach(async () => {
@@ -69,6 +72,19 @@ describe('BasePaymentExecutor', () => {
 
     aspinAdapter = {
       notifyPaymentStatus: jest.fn(),
+    };
+
+    metricsService = {
+      incrementPaymentInitiated: jest.fn(),
+      incrementPaymentSuccess: jest.fn(),
+      incrementPaymentFailure: jest.fn(),
+      incrementApiCall: jest.fn(),
+      incrementApiError: jest.fn(),
+      incrementWebhookReceived: jest.fn(),
+      incrementWebhookProcessed: jest.fn(),
+      incrementWebhookFailed: jest.fn(),
+      recordPaymentDuration: jest.fn(),
+      recordWebhookProcessingDuration: jest.fn(),
     };
 
     mockChannel = {
@@ -98,14 +114,19 @@ describe('BasePaymentExecutor', () => {
           useValue: aspinAdapter,
         },
         {
+          provide: MetricsService,
+          useValue: metricsService,
+        },
+        {
           provide: TestExecutor,
-          useFactory: (repo, queue, rabbit, aspin) =>
-            new TestExecutor(repo, queue, rabbit, aspin, mockChannel),
+          useFactory: (repo, queue, rabbit, aspin, metrics) =>
+            new TestExecutor(repo, queue, rabbit, aspin, metrics, mockChannel),
           inject: [
             PaymentRepositoryImpl,
             QueueServiceImpl,
             RabbitMQService,
             'AspinAdapter',
+            MetricsService,
           ],
         },
       ],
@@ -316,6 +337,9 @@ describe('BasePaymentExecutor', () => {
         amount: 100,
         currency: 'KES',
         processed: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        customerId: 'cust-123',
       });
 
       const result = await executor.handleCallback(payload);

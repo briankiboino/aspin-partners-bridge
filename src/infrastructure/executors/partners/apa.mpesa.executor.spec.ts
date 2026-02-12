@@ -5,6 +5,7 @@ import { PaymentChannel } from 'src/shared/constants/payments';
 import { PaymentRepositoryImpl } from '../../repositories/payments.postgres.repository';
 import { QueueServiceImpl } from '../../queue/queue.service.impl';
 import { RabbitMQService } from '../../rabbitmq/rabbitmq.service';
+import { MetricsService } from '../../monitoring/metrics.service';
 
 const mockPaymentRepository = {
   findByTransactionId: jest.fn(),
@@ -57,6 +58,18 @@ describe('ApaMpesaExecutor', () => {
           provide: 'AspinAdapter',
           useValue: mockAspinAdapter,
         },
+        {
+          provide: MetricsService,
+          useValue: {
+            incrementPaymentSuccess: jest.fn(),
+            incrementPaymentFailure: jest.fn(),
+            incrementWebhookReceived: jest.fn(),
+            incrementWebhookProcessed: jest.fn(),
+            incrementWebhookFailed: jest.fn(),
+            recordPaymentDuration: jest.fn(),
+            recordWebhookProcessingDuration: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -93,6 +106,7 @@ describe('ApaMpesaExecutor', () => {
       amount: 100,
       currency: 'KES',
       status: 'pending',
+      createdAt: new Date(),
       updatedAt: new Date(),
       customerId: 'cust-123',
       reference: 'ref-123',
@@ -111,19 +125,16 @@ describe('ApaMpesaExecutor', () => {
       });
       mockChannel.validateCallback.mockReturnValue(true);
 
-      // Mock repository update
       mockPaymentRepository.update.mockResolvedValue({
         ...paymentRecord,
         status: 'completed',
         processed: true,
       });
 
-      // Mock AspinAdapter notification
       mockAspinAdapter.notifyPaymentStatus.mockResolvedValue(undefined);
 
       const result = await executor.handleCallback(payload as any);
 
-      // Assertions
       expect(mockPaymentRepository.findByTransactionId).toHaveBeenCalledWith(
         'tx-123',
       );
@@ -152,26 +163,22 @@ describe('ApaMpesaExecutor', () => {
 
       const result = await executor.handleCallback(payload as any);
 
-      // Assertions
       expect(mockPaymentRepository.findByTransactionId).toHaveBeenCalledWith(
         'tx-123',
       );
-      // Should NOT validate callback or update DB or notify Aspin again
+
       expect(mockChannel.validateCallback).not.toHaveBeenCalled();
       expect(mockPaymentRepository.update).not.toHaveBeenCalled();
       expect(mockAspinAdapter.notifyPaymentStatus).not.toHaveBeenCalled();
 
-      // Verify result returns existing status
       expect(result.status).toBe('completed');
     });
 
     it('should throw error for invalid signature', async () => {
-      // Mock repository finding the transaction
       mockPaymentRepository.findByTransactionId.mockResolvedValue(
         paymentRecord,
       );
 
-      // Mock channel config and validation returning false
       mockChannel.loadConfig.mockResolvedValue({
         config: { webhookSecret: 'secret' },
       });
