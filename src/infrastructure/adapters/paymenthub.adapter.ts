@@ -17,12 +17,21 @@ export interface PaymentHubMpesaRequest {
   [key: string]: any;
 }
 
-export interface PaymentHubMpesaResponse {
-  merchantRequestId: string;
-  checkoutRequestId: string;
-  responseCode: string;
-  responseDescription: string;
-  customerMessage: string;
+export interface PaymentHubInitiateResponse {
+  transaction_id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  timestamp: string;
+}
+
+export interface PaymentHubWebhookResponse {
+  transaction_id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  timestamp: string;
+  signature: string;
 }
 
 export interface PaymentHubAirtelRequest {
@@ -30,23 +39,12 @@ export interface PaymentHubAirtelRequest {
   [key: string]: any;
 }
 
-export interface PaymentHubAirtelResponse {
-  transactionId: string;
-  status: string;
-  message: string;
-}
-
 export interface PaymentHubStatusResponse {
-  transactionId: string;
+  transaction_id: string;
   status: string;
-  amount?: number;
-  currency?: string;
-  responseCode?: string;
-  responseDescription?: string;
-  merchantRequestId?: string;
-  checkoutRequestId?: string;
-  resultCode?: string;
-  resultDesc?: string;
+  amount: number;
+  currency: string;
+  timestamp: string;
 }
 
 @Injectable()
@@ -122,7 +120,7 @@ export class PaymentHubAdapterImpl implements PaymentHubAdapter {
 
   async initiateMpesaPayment(
     payload: PaymentHubMpesaRequest,
-  ): Promise<PaymentHubMpesaResponse> {
+  ): Promise<PaymentHubInitiateResponse> {
     this.logger.log(
       `Initiating Mpesa payment for partner ${payload.partnerId} via PaymentHub`,
     );
@@ -134,25 +132,17 @@ export class PaymentHubAdapterImpl implements PaymentHubAdapter {
     });
 
     return {
-      merchantRequestId:
-        response.merchant_request_id || response.merchantRequestId,
-      checkoutRequestId:
-        response.checkout_request_id || response.checkoutRequestId,
-      responseCode: response.response_code || response.responseCode || '0',
-      responseDescription:
-        response.response_description ||
-        response.responseDescription ||
-        'Success',
-      customerMessage:
-        response.customer_message ||
-        response.customerMessage ||
-        'Payment request sent',
+      transaction_id: response.transaction_id,
+      status: response.status,
+      amount: response.amount,
+      currency: response.currency,
+      timestamp: response.timestamp,
     };
   }
 
   async initiateAirtelPayment(
     payload: PaymentHubAirtelRequest,
-  ): Promise<PaymentHubAirtelResponse> {
+  ): Promise<PaymentHubInitiateResponse> {
     this.logger.log(
       `Initiating Airtel payment for partner ${payload.partnerId} via PaymentHub`,
     );
@@ -164,9 +154,11 @@ export class PaymentHubAdapterImpl implements PaymentHubAdapter {
     });
 
     return {
-      transactionId: response.transaction_id || response.transactionId,
-      status: response.status || 'pending',
-      message: response.message || 'Payment request sent',
+      transaction_id: response.transaction_id,
+      status: response.status,
+      amount: response.amount,
+      currency: response.currency,
+      timestamp: response.timestamp,
     };
   }
 
@@ -183,16 +175,11 @@ export class PaymentHubAdapterImpl implements PaymentHubAdapter {
     });
 
     return {
-      transactionId: response.transaction_id || transactionId,
+      transaction_id: response.transaction_id || transactionId,
       status: response.status || 'pending',
       amount: response.amount,
       currency: response.currency,
-      responseCode: response.response_code,
-      responseDescription: response.response_description,
-      merchantRequestId: response.merchant_request_id,
-      checkoutRequestId: response.checkout_request_id,
-      resultCode: response.result_code,
-      resultDesc: response.result_desc,
+      timestamp: response.timestamp,
     };
   }
 
@@ -209,10 +196,11 @@ export class PaymentHubAdapterImpl implements PaymentHubAdapter {
     });
 
     return {
-      transactionId: response.transaction_id || transactionId,
+      transaction_id: response.transaction_id || transactionId,
       status: response.status || 'pending',
       amount: response.amount,
       currency: response.currency,
+      timestamp: response.timestamp,
     };
   }
 }

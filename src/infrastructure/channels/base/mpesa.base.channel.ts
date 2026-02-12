@@ -88,11 +88,11 @@ export abstract class BaseMpesaChannel implements IMpesaChannel {
       );
 
       return {
-        merchantRequestId: response.merchantRequestId,
-        checkoutRequestId: response.checkoutRequestId,
-        responseCode: response.responseCode,
-        responseDescription: response.responseDescription,
-        customerMessage: response.customerMessage,
+        transactionId: response.transaction_id,
+        status: response.status,
+        amount: response.amount,
+        currency: response.currency,
+        timestamp: response.timestamp,
       };
     } catch (error) {
       this.logger.error(
@@ -114,12 +114,11 @@ export abstract class BaseMpesaChannel implements IMpesaChannel {
       );
 
       return {
-        responseCode: response.responseCode,
-        responseDescription: response.responseDescription,
-        merchantRequestId: response.merchantRequestId,
-        checkoutRequestId: response.checkoutRequestId,
-        resultCode: response.resultCode,
-        resultDesc: response.resultDesc,
+        transactionId: response.transaction_id,
+        status: response.status,
+        amount: response.amount,
+        currency: response.currency,
+        timestamp: response.timestamp,
       };
     } catch (error) {
       this.logger.error(
@@ -131,11 +130,12 @@ export abstract class BaseMpesaChannel implements IMpesaChannel {
   }
 
   validateCallback(payload: any, secret: string): boolean {
+    const { signature, ...data } = payload;
     const expectedSignature = crypto
       .createHmac('sha256', secret)
-      .update(JSON.stringify(payload))
+      .update(JSON.stringify(data))
       .digest('hex');
 
-    return payload.signature === expectedSignature;
+    return signature === expectedSignature;
   }
 }
