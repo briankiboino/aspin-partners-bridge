@@ -12,17 +12,22 @@ import { BasePaymentExecutor } from './base.payment.executor';
 import { PaymentRepositoryImpl } from '../repositories/payments.postgres.repository';
 import { QueueServiceImpl } from '../queue/queue.service.impl';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
-import { PaymentChannel } from 'src/shared/constants/payments';
-import { IMpesaChannel } from 'src/application/interfaces/channel.interface';
+import { PaymentChannel } from '../../shared/constants/payments';
+import {
+  IMpesaChannel,
+  IAirtelChannel,
+} from '../../application/interfaces/channel.interface';
 
 class TestExecutor extends BasePaymentExecutor {
+  public channelType: PaymentChannel = PaymentChannel.MPESA;
+
   getPartner(): string {
     return 'TEST_PARTNER';
   }
   getChannel(): PaymentChannel {
-    return PaymentChannel.MPESA;
+    return this.channelType;
   }
-  public getChannelImplementation(): IMpesaChannel {
+  public getChannelImplementation(): IMpesaChannel | IAirtelChannel {
     return this.channelImplementation;
   }
 
@@ -49,6 +54,7 @@ describe('BasePaymentExecutor', () => {
       create: jest.fn(),
       findByTransactionId: jest.fn(),
       updateStatus: jest.fn(),
+      update: jest.fn(), // Added for handleCallback
     };
 
     queueService = {
@@ -61,6 +67,7 @@ describe('BasePaymentExecutor', () => {
 
     mockChannel = {
       stkPush: jest.fn(),
+      directDebit: jest.fn(),
       queryTransaction: jest.fn(),
       loadConfig: jest.fn(),
       validateCallback: jest.fn(),
@@ -102,37 +109,107 @@ describe('BasePaymentExecutor', () => {
       channel: PaymentChannel.MPESA,
     };
 
-    it('should successfully initiate payment', async () => {
-      paymentRepository.findByReference.mockResolvedValue(null);
-      mockChannel.stkPush.mockResolvedValue({
-        transactionId: 'TXN123',
-        status: 'pending',
-        timestamp: new Date().toISOString(),
-      });
-
-      const result = await executor.initiate(payload);
-
-      expect(paymentRepository.findByReference).toHaveBeenCalledWith(
-        payload.reference,
-      );
-      expect(mockChannel.stkPush).toHaveBeenCalled();
-      expect(paymentRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
+    describe('MPESA', () => {
+      it('should successfully initiate payment via MPESA', async () => {
+        executor.channelType = PaymentChannel.MPESA;
+        paymentRepository.findByReference.mockResolvedValue(null);
+        mockChannel.stkPush.mockResolvedValue({
           transactionId: 'TXN123',
           status: 'pending',
-          reference: payload.reference,
-        }),
-      );
-      expect(queueService.addStatusCheckJob).toHaveBeenCalled();
-      expect(result.transactionId).toBe('TXN123');
+          timestamp: new Date().toISOString(),
+        });
+
+        const result = await executor.initiate(payload);
+
+        expect(paymentRepository.findByReference).toHaveBeenCalledWith(
+          payload.reference,
+        );
+        expect(mockChannel.stkPush).toHaveBeenCalledWith({
+          phoneNumber: payload.customerId,
+          amount: payload.amount,
+          accountReference: payload.reference,
+          transactionDesc: `Payment for TEST_PARTNER`,
+          partnerId: payload.partnerId,
+        });
+        expect(paymentRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            transactionId: 'TXN123',
+            status: 'pending',
+            reference: payload.reference,
+            channel: PaymentChannel.MPESA,
+          }),
+        );
+        expect(queueService.addStatusCheckJob).toHaveBeenCalled();
+        expect(result.transactionId).toBe('TXN123');
+      });
     });
 
-    it('should throw error for duplicate transaction', async () => {
-      paymentRepository.findByReference.mockResolvedValue({} as any);
+    describe('AIRTEL', () => {
+      it('should successfully initiate payment via AIRTEL', async () => {
+        executor.channelType = PaymentChannel.AIRTEL;
+        const airtelPayload = { ...payload, channel: PaymentChannel.AIRTEL };
 
-      await expect(executor.initiate(payload)).rejects.toThrow(
-        'Duplicate transaction attempt',
-      );
+        paymentRepository.findByReference.mockResolvedValue(null);
+        mockChannel.directDebit.mockResolvedValue({
+          transactionId: 'AIRTEL_TXN_123',
+          status: 'pending',
+          timestamp: new Date().toISOString(),
+        });
+
+        const result = await executor.initiate(airtelPayload);
+
+        expect(paymentRepository.findByReference).toHaveBeenCalledWith(
+          airtelPayload.reference,
+        );
+        expect(mockChannel.directDebit).toHaveBeenCalledWith({
+          phoneNumber: airtelPayload.customerId,
+          amount: airtelPayload.amount,
+          reference: airtelPayload.reference,
+          partnerId: airtelPayload.partnerId,
+        });
+        expect(paymentRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            transactionId: 'AIRTEL_TXN_123',
+            status: 'pending',
+            reference: airtelPayload.reference,
+            channel: PaymentChannel.AIRTEL,
+          }),
+        );
+        expect(result.transactionId).toBe('AIRTEL_TXN_123');
+      });
+    });
+
+    describe('Error Handling', () => {
+      it('should throw error for duplicate transaction', async () => {
+        paymentRepository.findByReference.mockResolvedValue({} as any);
+
+        await expect(executor.initiate(payload)).rejects.toThrow(
+          'Duplicate transaction attempt',
+        );
+      });
+
+      it('should handle channel failure', async () => {
+        executor.channelType = PaymentChannel.MPESA;
+        paymentRepository.findByReference.mockResolvedValue(null);
+        mockChannel.stkPush.mockRejectedValue(new Error('Channel Error'));
+
+        await expect(executor.initiate(payload)).rejects.toThrow(
+          'Channel Error',
+        );
+        expect(paymentRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('should handle repository failure during creation', async () => {
+        executor.channelType = PaymentChannel.MPESA;
+        paymentRepository.findByReference.mockResolvedValue(null);
+        mockChannel.stkPush.mockResolvedValue({
+          transactionId: 'TXN123',
+          status: 'pending',
+        });
+        paymentRepository.create.mockRejectedValue(new Error('DB Error'));
+
+        await expect(executor.initiate(payload)).rejects.toThrow('DB Error');
+      });
     });
   });
 
@@ -175,6 +252,98 @@ describe('BasePaymentExecutor', () => {
       await executor.statusCheck(transactionId);
 
       expect(paymentRepository.updateStatus).not.toHaveBeenCalled();
+    });
+
+    describe('Error Handling', () => {
+      it('should throw error if transaction not found', async () => {
+        paymentRepository.findByTransactionId.mockResolvedValue(null);
+
+        await expect(executor.statusCheck('NON_EXISTENT')).rejects.toThrow(
+          'Transaction not found',
+        );
+      });
+
+      it('should throw error on unknown status format', async () => {
+        paymentRepository.findByTransactionId.mockResolvedValue({
+          transactionId,
+          status: 'pending',
+        });
+        mockChannel.queryTransaction.mockResolvedValue({
+          unknownField: 'something',
+        });
+
+        await expect(executor.statusCheck(transactionId)).rejects.toThrow(
+          'Unknown status response format',
+        );
+      });
+    });
+  });
+
+  describe('handleCallback', () => {
+    const transactionId = 'TXN_CALLBACK_123';
+    const payload = {
+      transaction_id: transactionId,
+      status: 'completed',
+    };
+
+    beforeEach(() => {
+      mockChannel.loadConfig.mockResolvedValue({
+        config: { webhookSecret: 'secret' },
+      });
+      mockChannel.validateCallback.mockReturnValue(true);
+    });
+
+    it('should process valid callback successfully', async () => {
+      paymentRepository.findByTransactionId.mockResolvedValue({
+        transactionId,
+        status: 'pending',
+        amount: 100,
+        currency: 'KES',
+        processed: false,
+      });
+
+      const result = await executor.handleCallback(payload);
+
+      expect(paymentRepository.update).toHaveBeenCalledWith(transactionId, {
+        status: 'completed',
+        processed: true,
+      });
+      expect(rabbitmqService.publish).toHaveBeenCalled();
+      expect(result.status).toBe('completed');
+    });
+
+    it('should throw error if transaction not found', async () => {
+      paymentRepository.findByTransactionId.mockResolvedValue(null);
+
+      await expect(executor.handleCallback(payload)).rejects.toThrow(
+        'Transaction not found',
+      );
+    });
+
+    it('should return processed status for duplicate callback', async () => {
+      paymentRepository.findByTransactionId.mockResolvedValue({
+        transactionId,
+        status: 'completed',
+        processed: true,
+        updatedAt: new Date(),
+      });
+
+      const result = await executor.handleCallback(payload);
+
+      expect(result.isValid).toBe(true);
+      expect(paymentRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw error for invalid signature', async () => {
+      paymentRepository.findByTransactionId.mockResolvedValue({
+        transactionId,
+        status: 'pending',
+      });
+      mockChannel.validateCallback.mockReturnValue(false);
+
+      await expect(executor.handleCallback(payload)).rejects.toThrow(
+        'Invalid callback signature',
+      );
     });
   });
 });
