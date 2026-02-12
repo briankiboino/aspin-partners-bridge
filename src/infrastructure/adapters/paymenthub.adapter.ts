@@ -62,7 +62,6 @@ export class PaymentHubAdapterImpl implements PaymentHubAdapter {
     this.baseUrl = this.configService.get<string>('PAYMENTHUB_API_BASE_URL');
     this.apiKey = this.configService.get<string>('PAYMENTHUB_API_KEY');
 
-    // Request interceptor for logging
     this.httpService.axiosRef.interceptors.request.use(
       (config) => {
         this.logger.log(
@@ -76,7 +75,6 @@ export class PaymentHubAdapterImpl implements PaymentHubAdapter {
       },
     );
 
-    // Response interceptor for logging
     this.httpService.axiosRef.interceptors.response.use(
       (response) => {
         this.logger.log(
