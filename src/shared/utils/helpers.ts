@@ -1,3 +1,5 @@
+import { PaymentChannel } from '../constants/payments';
+
 export const buildResponse = async (
   res: any,
   statusCode: number,
@@ -12,4 +14,16 @@ export const buildResponse = async (
     error: error,
     data: data,
   });
+};
+
+export const determineChannelFromPayload = (payload: any): PaymentChannel => {
+  if (payload.MerchantRequestID || payload.CheckoutRequestID) {
+    return PaymentChannel.MPESA;
+  }
+
+  if (payload.data?.transaction?.id || payload.transaction?.airtel_money_id) {
+    return PaymentChannel.AIRTEL;
+  }
+
+  return PaymentChannel.MPESA;
 };

@@ -13,15 +13,11 @@ export class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   async save(payment: Payment): Promise<void> {
-    await this.repository.save({
-      transactionId: payment.transactionId,
-      customerId: payment.customerId,
-      amount: payment.amount,
-      currency: payment.currency,
-      status: payment.status,
-      gateway: payment.gateway,
-      processed: payment.processed || false,
-    });
+    await this.repository.save(payment);
+  }
+
+  async create(payment: Partial<Payment>): Promise<void> {
+    await this.repository.save(payment);
   }
 
   async findByTransactionId(id: string): Promise<Payment | null> {
@@ -31,12 +27,20 @@ export class PaymentRepositoryImpl implements PaymentRepository {
     return result;
   }
 
+  async findByReference(reference: string): Promise<Payment | null> {
+    return this.repository.findOneBy({ reference });
+  }
+
   async markAsProcessed(id: string): Promise<void> {
     await this.repository.update({ transactionId: id }, { processed: true });
   }
 
   async updateStatus(id: string, status: string): Promise<void> {
     await this.repository.update({ transactionId: id }, { status });
+  }
+
+  async update(transactionId: string, data: Partial<Payment>): Promise<void> {
+    await this.repository.update({ transactionId }, data);
   }
 
   async isProcessed(id: string): Promise<boolean> {

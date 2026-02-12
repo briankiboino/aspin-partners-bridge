@@ -1,48 +1,82 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { PaymentsUseCase } from '../interfaces/payments.usecases.interface';
-import { QueueService } from '../interfaces/queue.interface';
 import {
   InitiatePaymentPayload,
   PaymentHubWebhookPayload,
 } from '../dto/payments/input';
-import { PaymentNotificationResponse } from '../dto/payments/output';
-import { PaymentChannel } from 'src/shared/constants/payments';
 import {
-  TransactionNotFoundException,
-  UnsupportedPaymentChannelException,
-} from 'src/shared/exceptions/payment.exceptions';
-import { MPesaGateway } from '../interfaces/mpesa.gateway.interface';
-import { AirtelGateway } from '../interfaces/airtel.gateway.interface';
+  PaymentNotificationResponse,
+  InitiatePaymentResponse,
+  WebhookProcessingResponse,
+} from '../dto/payments/output';
+import {
+  PaymentChannel,
+  PaymentNotificationStatus,
+} from 'src/shared/constants/payments';
+import { TransactionNotFoundException } from 'src/shared/exceptions/payment.exceptions';
 import { PaymentRepository } from 'src/domain/repositories/payments.postgres.repository';
-import { JobTYPE } from 'src/shared/constants/queue';
+import { PaymentExecutorBuilder } from 'src/infrastructure/executors/builder/payment.executor.builder';
+import { determineChannelFromPayload } from 'src/shared/utils/helpers';
 
 @Injectable()
 export class PaymentsUseCaseImpl implements PaymentsUseCase {
   constructor(
     @Inject('PaymentRepository')
     private readonly paymentRepository: PaymentRepository,
-    @Inject('QueueService')
-    private readonly queueService: QueueService,
-    @Inject('MPesaGateway')
-    private readonly mpesaGateway: MPesaGateway,
-    @Inject('AirtelGateway')
-    private readonly airtelGateway: AirtelGateway,
+    @Inject('PaymentExecutorBuilder')
+    private readonly executorFactory: PaymentExecutorBuilder,
   ) {}
 
-  async initiatePayment(payload: InitiatePaymentPayload): Promise<void> {
-    return this.queueService.enqueueWebhook(JobTYPE.PAYMENTS, payload);
+  async initiatePayment(
+    payload: InitiatePaymentPayload,
+  ): Promise<InitiatePaymentResponse> {
+    const executor = this.executorFactory.getExecutor(
+      payload.partner_id,
+      payload.channel,
+    );
+
+    const result = await executor.initiate({
+      amount: payload.amount,
+      currency: payload.currency,
+      customerId: payload.customer_id,
+      reference: payload.reference,
+      partnerId: payload.partner_id,
+      channel: payload.channel,
+    });
+
+    return {
+      success: true,
+      data: {
+        transaction_id: result.transactionId,
+        status: result.status,
+        amount: result.amount,
+        currency: result.currency,
+        timestamp: result.timestamp,
+      },
+    };
   }
 
-  async handleWebhook(payload: PaymentHubWebhookPayload): Promise<void> {
-    return this.queueService.enqueueWebhook(
-      JobTYPE.PAYMENT_NOTIFICATION,
-      payload,
+  async handleWebhook(
+    payload: PaymentHubWebhookPayload,
+  ): Promise<WebhookProcessingResponse> {
+    const channel = determineChannelFromPayload(payload);
+
+    const executor = this.executorFactory.getExecutor(
+      payload.partner_id.toUpperCase(),
+      channel,
     );
+
+    const result = await executor.handleCallback(payload);
+
+    return {
+      transaction_id: result.transactionId,
+      status: result.status,
+      processed: true,
+    };
   }
 
   async checkPayment(
     transactionId: string,
-    channel: PaymentChannel,
   ): Promise<PaymentNotificationResponse> {
     const transaction = await this.paymentRepository.findByTransactionId(
       transactionId,
@@ -51,18 +85,20 @@ export class PaymentsUseCaseImpl implements PaymentsUseCase {
       throw new TransactionNotFoundException(transactionId);
     }
 
-    if (channel === PaymentChannel.MPESA) {
-      return this.mpesaGateway.checkStatus(
-        transactionId,
-        transaction.partner_id,
-      );
-    } else if (channel === PaymentChannel.AIRTEL) {
-      return this.airtelGateway.checkStatus(
-        transactionId,
-        transaction.partner_id,
-      );
-    } else {
-      throw new UnsupportedPaymentChannelException(channel);
-    }
+    const executor = this.executorFactory.getExecutor(
+      transaction.partner_id,
+      transaction.channel as PaymentChannel,
+    );
+
+    const result = await executor.statusCheck(transactionId);
+
+    return {
+      transaction_id: result.transactionId,
+      status: result.status as PaymentNotificationStatus,
+      amount: result.amount || transaction.amount,
+      currency: result.currency || transaction.currency,
+      timestamp: result.timestamp.toISOString(),
+      signature: '',
+    };
   }
 }
