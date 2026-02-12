@@ -87,9 +87,11 @@ export abstract class BaseAirtelChannel implements IAirtelChannel {
       );
 
       return {
-        transactionId: response.transactionId || payload.reference,
-        status: response.status || 'pending',
-        message: response.message || 'Transaction initiated',
+        transactionId: response.transaction_id,
+        status: response.status,
+        amount: response.amount,
+        currency: response.currency,
+        timestamp: response.timestamp,
       };
     } catch (error) {
       this.logger.error(
@@ -111,10 +113,11 @@ export abstract class BaseAirtelChannel implements IAirtelChannel {
       );
 
       return {
-        transactionId: response.transactionId,
+        transactionId: response.transaction_id,
         status: response.status,
         amount: response.amount,
         currency: response.currency,
+        timestamp: response.timestamp,
       };
     } catch (error) {
       this.logger.error(
@@ -126,11 +129,12 @@ export abstract class BaseAirtelChannel implements IAirtelChannel {
   }
 
   validateCallback(payload: any, secret: string): boolean {
+    const { signature, ...data } = payload;
     const expectedSignature = crypto
       .createHmac('sha256', secret)
-      .update(JSON.stringify(payload))
+      .update(JSON.stringify(data))
       .digest('hex');
 
-    return payload.signature === expectedSignature;
+    return signature === expectedSignature;
   }
 }

@@ -68,10 +68,9 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         });
       }
 
-      const transactionId = this.generateTransactionId(
-        this.getPartner(),
-        this.getChannel(),
-      );
+      const transactionId =
+        channelResponse?.transactionId ||
+        this.generateTransactionId(this.getPartner(), this.getChannel());
 
       await this.paymentRepository.create({
         transactionId,
@@ -99,10 +98,12 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
 
       const response: PaymentInitiationResponse = {
         transactionId,
-        status: 'pending',
+        status: channelResponse?.status || 'pending',
         amount: payload.amount,
         currency: payload.currency,
-        timestamp: new Date(),
+        timestamp: channelResponse?.timestamp
+          ? new Date(channelResponse.timestamp)
+          : new Date(),
         channelResponse,
       };
 
@@ -131,9 +132,7 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
       const statusResponse = await channel.queryTransaction(transactionId);
 
       let status: string;
-      if ('resultCode' in statusResponse) {
-        status = statusResponse.resultCode === '0' ? 'completed' : 'failed';
-      } else if ('status' in statusResponse) {
+      if ('status' in statusResponse) {
         status = statusResponse.status;
       } else {
         this.logger.error('Unknown status response format', statusResponse);

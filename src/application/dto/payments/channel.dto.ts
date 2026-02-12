@@ -7,20 +7,19 @@ export interface MpesaStkPushPayload {
 }
 
 export interface MpesaStkPushResponse {
-  merchantRequestId: string;
-  checkoutRequestId: string;
-  responseCode: string;
-  responseDescription: string;
-  customerMessage: string;
+  transactionId: string;
+  status: string;
+  amount: number;
+  currency: string;
+  timestamp: string;
 }
 
 export interface MpesaQueryResponse {
-  responseCode: string;
-  responseDescription: string;
-  merchantRequestId: string;
-  checkoutRequestId: string;
-  resultCode: string;
-  resultDesc: string;
+  transactionId: string;
+  status: string;
+  amount: number;
+  currency: string;
+  timestamp: string;
 }
 
 export interface AirtelDirectDebitPayload {
@@ -33,9 +32,10 @@ export interface AirtelDirectDebitPayload {
 export interface AirtelDirectDebitResponse {
   transactionId: string;
   status: string;
-  message: string;
-  amount?: number;
-  currency?: string;
+  amount: number;
+  currency: string;
+  timestamp: string;
+  message?: string;
 }
 
 export interface AirtelQueryResponse {
@@ -43,4 +43,5 @@ export interface AirtelQueryResponse {
   status: string;
   amount?: number;
   currency?: string;
+  timestamp: string;
 }
