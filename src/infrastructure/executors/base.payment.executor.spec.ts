@@ -35,9 +35,10 @@ class TestExecutor extends BasePaymentExecutor {
     repository: any,
     queue: any,
     rabbit: any,
+    aspin: any,
     private channelImplementation: any,
   ) {
-    super(repository, queue, rabbit);
+    super(repository, queue, rabbit, aspin);
   }
 }
 
@@ -46,6 +47,7 @@ describe('BasePaymentExecutor', () => {
   let paymentRepository: any;
   let queueService: any;
   let rabbitmqService: any;
+  let aspinAdapter: any;
   let mockChannel: any;
 
   beforeEach(async () => {
@@ -54,7 +56,7 @@ describe('BasePaymentExecutor', () => {
       create: jest.fn(),
       findByTransactionId: jest.fn(),
       updateStatus: jest.fn(),
-      update: jest.fn(), // Added for handleCallback
+      update: jest.fn(),
     };
 
     queueService = {
@@ -63,6 +65,10 @@ describe('BasePaymentExecutor', () => {
 
     rabbitmqService = {
       publish: jest.fn(),
+    };
+
+    aspinAdapter = {
+      notifyPaymentStatus: jest.fn(),
     };
 
     mockChannel = {
@@ -88,10 +94,19 @@ describe('BasePaymentExecutor', () => {
           useValue: rabbitmqService,
         },
         {
+          provide: 'AspinAdapter',
+          useValue: aspinAdapter,
+        },
+        {
           provide: TestExecutor,
-          useFactory: (repo, queue, rabbit) =>
-            new TestExecutor(repo, queue, rabbit, mockChannel),
-          inject: [PaymentRepositoryImpl, QueueServiceImpl, RabbitMQService],
+          useFactory: (repo, queue, rabbit, aspin) =>
+            new TestExecutor(repo, queue, rabbit, aspin, mockChannel),
+          inject: [
+            PaymentRepositoryImpl,
+            QueueServiceImpl,
+            RabbitMQService,
+            'AspinAdapter',
+          ],
         },
       ],
     }).compile();
@@ -234,6 +249,7 @@ describe('BasePaymentExecutor', () => {
         transactionId,
         'completed',
       );
+      expect(aspinAdapter.notifyPaymentStatus).toHaveBeenCalled();
       expect(result.status).toBe('completed');
     });
 
@@ -309,6 +325,7 @@ describe('BasePaymentExecutor', () => {
         processed: true,
       });
       expect(rabbitmqService.publish).toHaveBeenCalled();
+      expect(aspinAdapter.notifyPaymentStatus).toHaveBeenCalled();
       expect(result.status).toBe('completed');
     });
 
