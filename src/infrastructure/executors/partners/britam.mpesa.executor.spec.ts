@@ -5,6 +5,7 @@ import { PaymentChannel } from 'src/shared/constants/payments';
 import { PaymentRepositoryImpl } from '../../repositories/payments.postgres.repository';
 import { QueueServiceImpl } from '../../queue/queue.service.impl';
 import { RabbitMQService } from '../../rabbitmq/rabbitmq.service';
+import { MetricsService } from '../../monitoring/metrics.service';
 
 jest.mock('../../repositories/payments.postgres.repository', () => ({
   PaymentRepositoryImpl: class MockPaymentRepositoryImpl {},
@@ -42,6 +43,18 @@ describe('BritamMpesaExecutor', () => {
         {
           provide: 'AspinAdapter',
           useValue: { notifyPaymentStatus: jest.fn() },
+        },
+        {
+          provide: MetricsService,
+          useValue: {
+            incrementPaymentSuccess: jest.fn(),
+            incrementPaymentFailure: jest.fn(),
+            incrementWebhookReceived: jest.fn(),
+            incrementWebhookProcessed: jest.fn(),
+            incrementWebhookFailed: jest.fn(),
+            recordPaymentDuration: jest.fn(),
+            recordWebhookProcessingDuration: jest.fn(),
+          },
         },
       ],
     }).compile();
