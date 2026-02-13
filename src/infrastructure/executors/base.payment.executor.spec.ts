@@ -13,6 +13,7 @@ import { PaymentRepositoryImpl } from '../repositories/payments.postgres.reposit
 import { QueueServiceImpl } from '../queue/queue.service.impl';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { MetricsService } from '../monitoring/metrics.service';
+import { ConfigService } from '@nestjs/config';
 import { PaymentChannel } from '../../shared/constants/payments';
 import {
   IMpesaChannel,
@@ -38,9 +39,10 @@ class TestExecutor extends BasePaymentExecutor {
     rabbit: any,
     aspin: any,
     metrics: any,
+    config: any,
     private channelImplementation: any,
   ) {
-    super(repository, queue, rabbit, aspin, metrics);
+    super(repository, queue, rabbit, aspin, metrics, config);
   }
 }
 
@@ -51,6 +53,7 @@ describe('BasePaymentExecutor', () => {
   let rabbitmqService: any;
   let aspinAdapter: any;
   let metricsService: any;
+  let configService: any;
   let mockChannel: any;
 
   beforeEach(async () => {
@@ -68,6 +71,9 @@ describe('BasePaymentExecutor', () => {
 
     rabbitmqService = {
       publish: jest.fn(),
+      publishPaymentCompleted: jest.fn(),
+      publishPaymentFailed: jest.fn(),
+      publishPaymentPending: jest.fn(),
     };
 
     aspinAdapter = {
@@ -85,6 +91,10 @@ describe('BasePaymentExecutor', () => {
       incrementWebhookFailed: jest.fn(),
       recordPaymentDuration: jest.fn(),
       recordWebhookProcessingDuration: jest.fn(),
+    };
+
+    configService = {
+      get: jest.fn().mockReturnValue('test-secret'),
     };
 
     mockChannel = {
@@ -118,15 +128,28 @@ describe('BasePaymentExecutor', () => {
           useValue: metricsService,
         },
         {
+          provide: ConfigService,
+          useValue: configService,
+        },
+        {
           provide: TestExecutor,
-          useFactory: (repo, queue, rabbit, aspin, metrics) =>
-            new TestExecutor(repo, queue, rabbit, aspin, metrics, mockChannel),
+          useFactory: (repo, queue, rabbit, aspin, metrics, config) =>
+            new TestExecutor(
+              repo,
+              queue,
+              rabbit,
+              aspin,
+              metrics,
+              config,
+              mockChannel,
+            ),
           inject: [
             PaymentRepositoryImpl,
             QueueServiceImpl,
             RabbitMQService,
             'AspinAdapter',
             MetricsService,
+            ConfigService,
           ],
         },
       ],
@@ -348,7 +371,7 @@ describe('BasePaymentExecutor', () => {
         status: 'completed',
         processed: true,
       });
-      expect(rabbitmqService.publish).toHaveBeenCalled();
+      expect(rabbitmqService.publishPaymentCompleted).toHaveBeenCalled();
       expect(aspinAdapter.notifyPaymentStatus).toHaveBeenCalled();
       expect(result.status).toBe('completed');
     });

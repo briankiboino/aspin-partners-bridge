@@ -9,6 +9,7 @@ import { PaymentRepositoryImpl } from '../../repositories/payments.postgres.repo
 import { QueueServiceImpl } from '../../queue/queue.service.impl';
 import { AspinAdapter } from 'src/application/interfaces/aspin.adapter.interface';
 import { MetricsService } from '../../monitoring/metrics.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ApaMpesaExecutor extends BasePaymentExecutor {
@@ -19,6 +20,7 @@ export class ApaMpesaExecutor extends BasePaymentExecutor {
     @Inject('AspinAdapter') aspinAdapter: AspinAdapter,
     metricsService: MetricsService,
     private readonly apaMpesaChannel: ApaMpesaChannel,
+    configService: ConfigService,
   ) {
     super(
       paymentRepository,
@@ -26,6 +28,7 @@ export class ApaMpesaExecutor extends BasePaymentExecutor {
       rabbitmqService,
       aspinAdapter,
       metricsService,
+      configService,
     );
   }
 

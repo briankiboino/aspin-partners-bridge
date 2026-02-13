@@ -83,7 +83,35 @@ npm install
 
 ## Configuration
 
-Ensure you have a `.env` file in the root directory. You can reference the required variables from the codebase or asking the team. Key variables include database credentials, RabbitMQ/Redis connection strings, and partner configurations.
+The application relies on environment variables for configuration. 
+
+1. **Copy the example environment file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Update the `.env` file** with your specific configuration details (database credentials, API keys, etc.).
+
+### Required Environment Variables
+
+| Variable | Description | Default (Local) |
+|----------|-------------|-----------------|
+| `PORT` | Application Port | 3000 |
+| `NODE_ENV` | Environment (development/production) | development |
+| `DB_HOST` | Database Host | localhost |
+| `DB_PORT` | Database Port | 5432 |
+| `DB_USERNAME` | Database User | postgres |
+| `DB_PASSWORD` | Database Password | postgres |
+| `DB_NAME` | Database Name | payments_db |
+| `REDIS_HOST` | Redis Host | localhost |
+| `REDIS_PORT` | Redis Port | 6379 |
+| `RABBITMQ_URL` | RabbitMQ Connection URL | amqp://localhost:5672 |
+| `PAYMENTHUB_API_BASE_URL` | PaymentHub API Base URL | - |
+| `PAYMENTHUB_API_KEY` | PaymentHub API Key | - |
+| `ASPIN_API_BASE_URL` | Aspin API Base URL | - |
+| `ASPIN_API_KEY` | Aspin API Key | - |
+| `ASPIN_ADAPTER_SIGNATURE_SECRET` | Secret for verifying webhook signatures | - |
+| `SENTRY_DSN` | Sentry DSN for error tracking | - |
 
 ## Running the Project Locally
 
