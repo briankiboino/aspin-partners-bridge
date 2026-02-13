@@ -6,6 +6,7 @@ import { PaymentRepositoryImpl } from '../../repositories/payments.postgres.repo
 import { QueueServiceImpl } from '../../queue/queue.service.impl';
 import { RabbitMQService } from '../../rabbitmq/rabbitmq.service';
 import { MetricsService } from '../../monitoring/metrics.service';
+import { ConfigService } from '@nestjs/config';
 
 const mockPaymentRepository = {
   findByTransactionId: jest.fn(),
@@ -27,6 +28,9 @@ const mockQueueService = {
 
 const mockRabbitMQService = {
   publish: jest.fn(),
+  publishPaymentCompleted: jest.fn(),
+  publishPaymentFailed: jest.fn(),
+  publishPaymentPending: jest.fn(),
 };
 
 describe('ApaMpesaExecutor', () => {
@@ -68,6 +72,12 @@ describe('ApaMpesaExecutor', () => {
             incrementWebhookFailed: jest.fn(),
             recordPaymentDuration: jest.fn(),
             recordWebhookProcessingDuration: jest.fn(),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockReturnValue('test-secret'),
           },
         },
       ],

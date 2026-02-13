@@ -22,9 +22,11 @@ import { AspinAdapter } from '../../application/interfaces/aspin.adapter.interfa
 import { PaymentNotificationResponse } from '../../application/dto/payments/output';
 import { MetricsService } from '../monitoring/metrics.service';
 import * as crypto from 'crypto';
+import { ConfigService } from '@nestjs/config';
 
 export abstract class BasePaymentExecutor implements IPaymentExecutor {
   protected readonly logger = new Logger(this.constructor.name);
+  private aspinAdapterSignatureSecret: string;
 
   constructor(
     @Inject(PaymentRepositoryImpl)
@@ -36,7 +38,12 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
     @Inject('AspinAdapter')
     protected readonly aspinAdapter: AspinAdapter,
     protected readonly metricsService: MetricsService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    this.aspinAdapterSignatureSecret = configService.get<string>(
+      'ASPIN_ADAPTER_SIGNATURE_SECRET',
+    );
+  }
 
   abstract getPartner(): string;
   abstract getChannel(): PaymentChannel;
@@ -341,11 +348,13 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
       reference: payment.reference,
     };
 
-    await this.rabbitmqService.publish(
-      'payment.events',
-      'payment.completed',
-      event,
-    );
+    if (status === 'completed') {
+      await this.rabbitmqService.publishPaymentCompleted(event);
+    } else if (status === 'failed') {
+      await this.rabbitmqService.publishPaymentFailed(event);
+    } else {
+      await this.rabbitmqService.publishPaymentPending(event);
+    }
 
     this.logger.log(
       `Published payment result to RabbitMQ for ${payment.partner_id}`,
@@ -364,7 +373,7 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         currency: payment.currency,
         timestamp: event.timestamp,
         signature: crypto
-          .createHmac('sha256', 'aspin-secret')
+          .createHmac('sha256', this.aspinAdapterSignatureSecret)
           .update(payment.transactionId + status)
           .digest('hex'),
       };
