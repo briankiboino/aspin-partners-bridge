@@ -44,6 +44,9 @@ importers:
       amqplib:
         specifier: ^0.10.9
         version: 0.10.9
+      axios:
+        specifier: ^1.13.5
+        version: 1.13.5
       bullmq:
         specifier: ^5.68.0
         version: 5.68.0

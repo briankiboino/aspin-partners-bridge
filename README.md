@@ -5,6 +5,7 @@
 The **Aspin Partners Bridge** is a robust payment processing middleware designed to facilitate financial transactions between Aspin and its partners (e.g., Insurance companies like APA, Britam).
 
 Key features include:
+
 - **Unified Payment Interface**: Single API for initiating payments across different partners and channels.
 - **Multi-Channel Support**: Seamless integration with Mpesa and Airtel Money.
 - **Asynchronous Processing**: Reliable event-driven architecture using RabbitMQ for notifications and BullMQ for delayed tasks (e.g., proactive status checks).
@@ -26,21 +27,26 @@ Key features include:
 ## Key Design Decisions
 
 ### 1. Clean Architecture (Uncle Bob)
+
 The application adheres to the principles of Clean Architecture to ensure independence of frameworks, testability, and separation of concerns:
+
 - **Domain (Entities)**: Contains the core business objects (Entities) and enterprise-wide rules. This layer has no external dependencies.
 - **Application (Use Cases)**: Encapsulates application-specific business rules. It orchestrates the flow of data to and from the entities and defines interfaces for infrastructure.
 - **Infrastructure (Frameworks & Drivers)**: Implements the interfaces defined by the Application layer. This includes Databases (TypeORM), External Adapters (PaymentHub, Aspin), and Queues (RabbitMQ/BullMQ).
 - **Presentation (Interface Adapters)**: Handles the delivery mechanism (HTTP Controllers), converting data from the external form to the internal use case format.
 
 ### 1.1 Layer Communication & Dependency Inversion
+
 Communication between layers is achieved through **Interfaces** defined in the inner layers (Application/Domain) and implemented by outer layers (Infrastructure). This strictly follows the **Dependency Rule**: source code dependencies can only point inwards.
 
 - **Separation of Concerns**:
-  - The `PaymentsUseCase` (Application) needs to save data but doesn't know *how*. It defines a `PaymentRepository` interface.
+
+  - The `PaymentsUseCase` (Application) needs to save data but doesn't know _how_. It defines a `PaymentRepository` interface.
   - The `PaymentRepositoryImpl` (Infrastructure) implements this interface using TypeORM and Postgres.
   - This decouples the business logic from the database technology.
 
 - **Testability**:
+
   - Because the Use Case depends on an interface, we can easily inject a Mock or Stub implementation during unit testing.
   - We test `PaymentsUseCase` without spinning up a real database, making tests fast and reliable.
 
@@ -51,20 +57,25 @@ Communication between layers is achieved through **Interfaces** defined in the i
   4. All dependencies are injected via NestJS Dependency Injection container.
 
 ### 2. Strategy Pattern for Payment Execution
+
 To handle the combinatorial complexity of Partners (APA, Britam) and Channels (Mpesa, Airtel), the system uses the Strategy Pattern.
+
 - `IPaymentExecutor`: Defines the contract for payment operations.
 - `BasePaymentExecutor`: Abstract class implementing common logic (webhooks, notifications).
 - **Concrete Executors** (e.g., `ApaMpesaExecutor`, `BritamAirtelExecutor`): Handle partner-specific business rules.
 - `PaymentExecutorBuilder`: Factory to instantiate the correct executor based on the request context.
 
 ### 3. Stateless Channel Gateways
+
 Channel implementations (`BaseMpesaChannel`, `BaseAirtelChannel`) are designed to be stateless. They accept configuration (credentials, secrets) at runtime, allowing the system to support multiple partners with different credentials using the same underlying channel logic.
 
 ### 4. Robust Status Synchronization
+
 - **Webhooks**: Handles real-time notifications from the Payment Hub.
 - **Proactive Polling**: Automatically schedules a delayed job (via BullMQ) to check payment status if a final state isn't received immediately, ensuring data consistency.
 
 ### 5. Monitoring & Observability
+
 - **Metrics (Prometheus)**: The system exposes key business and performance metrics (e.g., `payments_success_rate`, `payment_processing_duration`, `api_error_rate`) at `/metrics`.
 - **Error Tracking (Sentry)**: Integrated Sentry SDK captures unhandled exceptions and performance profiles, providing deep visibility into runtime issues.
 - **Instrumentation**: Custom instrumentation is applied to the payment execution flow to track latencies and success rates across different partners and channels.
@@ -83,9 +94,10 @@ npm install
 
 ## Configuration
 
-The application relies on environment variables for configuration. 
+The application relies on environment variables for configuration.
 
 1. **Copy the example environment file:**
+
    ```bash
    cp .env.example .env
    ```
@@ -94,32 +106,34 @@ The application relies on environment variables for configuration.
 
 ### Required Environment Variables
 
-| Variable | Description | Default (Local) |
-|----------|-------------|-----------------|
-| `PORT` | Application Port | 3000 |
-| `NODE_ENV` | Environment (development/production) | development |
-| `DB_HOST` | Database Host | localhost |
-| `DB_PORT` | Database Port | 5432 |
-| `DB_USERNAME` | Database User | postgres |
-| `DB_PASSWORD` | Database Password | postgres |
-| `DB_NAME` | Database Name | payments_db |
-| `REDIS_HOST` | Redis Host | localhost |
-| `REDIS_PORT` | Redis Port | 6379 |
-| `RABBITMQ_URL` | RabbitMQ Connection URL | amqp://localhost:5672 |
-| `PAYMENTHUB_API_BASE_URL` | PaymentHub API Base URL | - |
-| `PAYMENTHUB_API_KEY` | PaymentHub API Key | - |
-| `ASPIN_API_BASE_URL` | Aspin API Base URL | - |
-| `ASPIN_API_KEY` | Aspin API Key | - |
-| `ASPIN_ADAPTER_SIGNATURE_SECRET` | Secret for verifying webhook signatures | - |
-| `SENTRY_DSN` | Sentry DSN for error tracking | - |
+| Variable                         | Description                             | Default (Local)       |
+| -------------------------------- | --------------------------------------- | --------------------- |
+| `PORT`                           | Application Port                        | 3000                  |
+| `NODE_ENV`                       | Environment (development/production)    | development           |
+| `DB_HOST`                        | Database Host                           | localhost             |
+| `DB_PORT`                        | Database Port                           | 5432                  |
+| `DB_USERNAME`                    | Database User                           | postgres              |
+| `DB_PASSWORD`                    | Database Password                       | postgres              |
+| `DB_NAME`                        | Database Name                           | payments_db           |
+| `REDIS_HOST`                     | Redis Host                              | localhost             |
+| `REDIS_PORT`                     | Redis Port                              | 6379                  |
+| `RABBITMQ_URL`                   | RabbitMQ Connection URL                 | amqp://localhost:5672 |
+| `PAYMENTHUB_API_BASE_URL`        | PaymentHub API Base URL                 | -                     |
+| `PAYMENTHUB_API_KEY`             | PaymentHub API Key                      | -                     |
+| `ASPIN_API_BASE_URL`             | Aspin API Base URL                      | -                     |
+| `ASPIN_API_KEY`                  | Aspin API Key                           | -                     |
+| `ASPIN_ADAPTER_SIGNATURE_SECRET` | Secret for verifying webhook signatures | -                     |
+| `SENTRY_DSN`                     | Sentry DSN for error tracking           | -                     |
 
 ## Running the Project Locally
 
 ### Prerequisites
+
 - Node.js (v20.13.1 recommended)
 - Docker & Docker Compose
 
 ### 1. Start Infrastructure Services
+
 Run the following command to spin up PostgreSQL, Redis, and RabbitMQ:
 
 ```bash
@@ -127,6 +141,7 @@ docker-compose up -d
 ```
 
 ### 2. Run the Application
+
 You can run the application in development mode:
 
 ```bash
@@ -155,4 +170,97 @@ pnpm test src/path/to/test.spec.ts
 ```
 
 ### Test Coverage
+
 Coverage is strictly configured to report on the `src` directory, ensuring `dist` and other artifacts are excluded.
+
+## API Endpoints & Example Payloads
+
+All examples below assume the application is running on `http://localhost:9000` (from `.env: PORT=9000`). Adjust the port if you change the configuration.
+
+### Health Check
+
+- Method: `GET`
+- URL:
+
+  ```text
+  {baseURL}/api/v1/health/check
+  ```
+
+### Initiate Payment
+
+- Method: `POST`
+- URL:
+
+  ```text
+  {baseURL}/api/v1/user/payments/initiate
+  ```
+
+- Headers:
+
+  ```text
+  Content-Type: application/json
+  ```
+
+- Example body:
+
+  ```json
+  {
+    "amount": 1000,
+    "currency": "KES",
+    "customer_id": "customer-123",
+    "reference": "INV-2026-0001",
+    "partner_id": "britam",
+    "channel": "MPESA"
+  }
+  ```
+
+### Check Payment Status
+
+- Method: `GET`
+- URL pattern:
+
+  ```text
+  {baseURL}/api/v1/user/payments/:transactionId/:channel
+  ```
+
+- Example URL:
+
+  ```text
+  {baseURL}/api/v1/user/payments/txn-123456/MPESA
+  ```
+
+### Webhook (PaymentHub → Aspin)
+
+This endpoint simulates the callback sent from the PaymentHub to notify Aspin about payment status changes.
+
+- Method: `POST`
+- URL pattern:
+
+  ```text
+  {baseURL}/api/v1/user/payments/webhook?partnerId={partnerId}
+  ```
+
+- Example URL:
+
+  ```text
+  {baseURL}/api/v1/user/payments/webhook?partnerId=britam
+  ```
+
+- Headers:
+
+  ```text
+  Content-Type: application/json
+  ```
+
+- Example body:
+
+  ```json
+  {
+    "transaction_id": "txn-123456",
+    "amount": 1000,
+    "status": "COMPLETED",
+    "currency": "KES",
+    "timestamp": "2026-02-17T10:00:00Z",
+    "signature": "dummy-signature-from-paymenthub"
+  }
+  ```

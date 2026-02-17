@@ -6,6 +6,7 @@ import { HealthController } from './presentation/controllers/health.check.contro
 import { PaymentsModule } from './payments.module';
 import { MonitoringModule } from './infrastructure/monitoring/monitoring.module';
 import { SentryFilter } from './infrastructure/monitoring/sentry.filter';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SentryFilter } from './infrastructure/monitoring/sentry.filter';
     TerminusModule,
     PaymentsModule,
     MonitoringModule,
+    HttpModule,
   ],
   controllers: [HealthController],
   providers: [

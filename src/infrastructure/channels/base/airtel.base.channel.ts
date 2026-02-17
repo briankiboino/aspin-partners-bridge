@@ -12,6 +12,7 @@ import { PaymentChannel } from 'src/shared/constants/payments';
 import * as crypto from 'crypto';
 import { PartnerConfigurationsRepository } from 'src/domain/repositories/partner.configurations.repository';
 import { PaymentHubAdapter } from 'src/application/interfaces/paymenthub.adapter.interface';
+import { PartnerConfigurationNotFoundException } from 'src/shared/exceptions/payment.exceptions';
 
 @Injectable()
 export abstract class BaseAirtelChannel implements IAirtelChannel {
@@ -37,7 +38,7 @@ export abstract class BaseAirtelChannel implements IAirtelChannel {
     );
 
     if (!config) {
-      throw new Error(
+      throw new PartnerConfigurationNotFoundException(
         `Airtel configuration not found for partner: ${partnerId}`,
       );
     }

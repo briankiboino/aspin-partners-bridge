@@ -4,6 +4,7 @@ import { PaymentChannel } from 'src/shared/constants/payments';
 import { BritamMpesaExecutor } from '../partners/britam.mpesa.executor';
 import { ApaMpesaExecutor } from '../partners/apa.mpesa.executor';
 import { BritamAirtelExecutor } from '../partners/britam.airtel.executor';
+import { PartnerExecutorNotFoundException } from 'src/shared/exceptions/payment.exceptions';
 
 @Injectable()
 export class PaymentExecutorBuilder {
@@ -38,7 +39,7 @@ export class PaymentExecutorBuilder {
     const executor = this.executors.get(key);
 
     if (!executor) {
-      throw new Error(
+      throw new PartnerExecutorNotFoundException(
         `No executor found for partner ${partnerId} and channel ${channel}`,
       );
     }
