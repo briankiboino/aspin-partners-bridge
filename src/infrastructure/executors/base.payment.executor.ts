@@ -23,6 +23,12 @@ import { PaymentNotificationResponse } from '../../application/dto/payments/outp
 import { MetricsService } from '../monitoring/metrics.service';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
+import {
+  DuplicateTransactionAttemptException,
+  InvalidCallbackSignatureException,
+  TransactionNotFoundException,
+  UnknownPaymentStatusException,
+} from 'src/shared/exceptions/payment.exceptions';
 
 export abstract class BasePaymentExecutor implements IPaymentExecutor {
   protected readonly logger = new Logger(this.constructor.name);
@@ -65,7 +71,9 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         payload.reference,
       );
       if (existing) {
-        throw new Error(`Duplicate transaction attempt: ${payload.reference}`);
+        throw new DuplicateTransactionAttemptException(
+          `Duplicate transaction attempt: ${payload.reference}`,
+        );
       }
 
       let channelResponse;
@@ -182,7 +190,7 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         transactionId,
       );
       if (!payment) {
-        throw new Error(`Transaction not found: ${transactionId}`);
+        throw new TransactionNotFoundException(transactionId);
       }
 
       const channel = this.getChannelImplementation();
@@ -193,7 +201,7 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         status = statusResponse.status;
       } else {
         this.logger.error('Unknown status response format', statusResponse);
-        throw new Error('Unknown status response format');
+        throw new UnknownPaymentStatusException();
       }
 
       if (status !== payment.status) {
@@ -227,7 +235,7 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         transactionId,
       );
       if (!payment) {
-        throw new Error(`Transaction not found: ${transactionId}`);
+        throw new TransactionNotFoundException(transactionId);
       }
 
       this.metricsService.incrementWebhookReceived(payment.partner_id);
@@ -255,7 +263,7 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
       );
 
       if (!isValid) {
-        throw new Error('Invalid callback signature');
+        throw new InvalidCallbackSignatureException();
       }
 
       const status = this.extractStatusFromCallback(payload);

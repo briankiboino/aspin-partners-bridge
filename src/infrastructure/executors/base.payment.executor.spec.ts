@@ -319,7 +319,7 @@ describe('BasePaymentExecutor', () => {
         paymentRepository.findByTransactionId.mockResolvedValue(null);
 
         await expect(executor.statusCheck('NON_EXISTENT')).rejects.toThrow(
-          'Transaction not found',
+          'Transaction not found: NON_EXISTENT',
         );
       });
 

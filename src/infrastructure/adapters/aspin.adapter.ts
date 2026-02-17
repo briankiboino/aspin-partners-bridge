@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import { AspinAdapter } from '../../application/interfaces/aspin.adapter.interface';
 import { PaymentNotificationResponse } from 'src/application/dto/payments/output';
+import { AspinAdapterException } from 'src/shared/exceptions/aspin.adapter.execption';
 
 type HTTPRequestConfig = {
   path: string;
@@ -50,7 +51,9 @@ export class AspinAdapterImpl implements AspinAdapter {
       return response.data;
     } catch (error) {
       this.logger.error('Aspin API call failed', error?.message);
-      throw new Error(`Aspin API call failed: ${error?.message}`);
+      throw new AspinAdapterException(
+        `Aspin API call failed: ${error?.message}`,
+      );
     }
   }
 

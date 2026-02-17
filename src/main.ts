@@ -23,7 +23,7 @@ async function bootstrap() {
     methods: ['POST', 'PUT', 'PATCH', 'DELETE', 'GET', 'OPTIONS'],
   });
 
-  await app.listen(parseInt(configService.get('PORT')), '0.0.0.0');
+  await app.listen(parseInt(configService.get('PORT')));
   console.log(`Dr Frankenstein: It's Alive! It's Alive!`);
 }
 bootstrap();
