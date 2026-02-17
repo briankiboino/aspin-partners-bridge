@@ -27,3 +27,24 @@ test-cov:
 # Clean up build artifacts and coverage
 clean:
 	rm -rf dist coverage
+
+# Docker executions
+# Build container images
+docker-build:
+	docker compose up -d
+
+# Rebuild container images (one need basis like after code changes)
+docker-rebuild:
+	docker compose up -d --build app
+
+# Tear down containers
+docker-tear-down:
+	docker compose down
+
+# Show logs for the app container
+docker-show-logs:
+	docker compose logs app | tail -n 100
+
+# Show active containers
+docker-active-containers:
+	docker compose ps
