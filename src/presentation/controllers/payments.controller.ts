@@ -38,6 +38,7 @@ export class PaymentsController {
         amount: dto.amount,
         currency: dto.currency,
         customer_id: dto.customer_id,
+        phoneNumber: dto.phoneNumber,
         reference: dto.reference,
         channel: dto.channel,
         partner_id: dto.partner_id,

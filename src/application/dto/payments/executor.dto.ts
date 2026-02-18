@@ -5,12 +5,13 @@ export interface PaymentInitiationPayload {
   currency: string;
   customerId: string;
   reference: string;
+  phoneNumber: string;
   partnerId: string;
   channel: PaymentChannel;
 }
 
 export interface PaymentInitiationResponse {
-  transactionId: string;
+  transactionId?: string;
   status: string;
   amount: number;
   currency: string;

@@ -7,12 +7,14 @@ import { QueueTYPE } from 'src/shared/constants/queue';
 import { RepositoryModule } from '../repositories/repository.module';
 import { AdaptersModule } from '../adapters/adapters.module';
 import { PaymentExecutorsModule } from '../executors/payment.executors.module';
+import { MetricsService } from '../monitoring/metrics.service';
 
 @Module({
   imports: [
     RedisModule,
     RepositoryModule,
     AdaptersModule,
+    MetricsService,
     forwardRef(() => PaymentExecutorsModule),
     BullModule.forRootAsync({
       imports: [RedisModule],

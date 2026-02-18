@@ -64,6 +64,7 @@ describe('PaymentsUseCaseImpl', () => {
       reference: 'ref_123',
       partner_id: 'partner_123',
       channel: PaymentChannel.MPESA,
+      phoneNumber: '254700000000',
     };
 
     it('should successfully initiate payment', async () => {
@@ -89,6 +90,7 @@ describe('PaymentsUseCaseImpl', () => {
         reference: payload.reference,
         partnerId: payload.partner_id,
         channel: payload.channel,
+        phoneNumber: '254700000000',
       });
       expect(result).toEqual({
         success: true,

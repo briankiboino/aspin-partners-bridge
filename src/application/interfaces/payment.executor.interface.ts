@@ -5,10 +5,12 @@ import {
   PaymentInitiationResponse,
   PaymentStatusResponse,
 } from '../dto/payments/executor.dto';
+import { IAirtelChannel, IMpesaChannel } from './channel.interface';
 
 export interface IPaymentExecutor {
   getPartner(): string;
   getChannel(): PaymentChannel;
+  getChannelImplementation(): IMpesaChannel | IAirtelChannel;
   initiate(
     payload: PaymentInitiationPayload,
   ): Promise<PaymentInitiationResponse>;

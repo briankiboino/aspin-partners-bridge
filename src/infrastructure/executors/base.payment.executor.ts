@@ -29,6 +29,7 @@ import {
   TransactionNotFoundException,
   UnknownPaymentStatusException,
 } from 'src/shared/exceptions/payment.exceptions';
+import { RedisProvider } from '../database/redis.provider';
 
 export abstract class BasePaymentExecutor implements IPaymentExecutor {
   protected readonly logger = new Logger(this.constructor.name);
@@ -45,15 +46,16 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
     protected readonly aspinAdapter: AspinAdapter,
     protected readonly metricsService: MetricsService,
     private configService: ConfigService,
+    private readonly redisProvider: RedisProvider,
   ) {
-    this.aspinAdapterSignatureSecret = configService.get<string>(
+    this.aspinAdapterSignatureSecret = this.configService.get<string>(
       'ASPIN_ADAPTER_SIGNATURE_SECRET',
     );
   }
 
   abstract getPartner(): string;
   abstract getChannel(): PaymentChannel;
-  protected abstract getChannelImplementation(): IMpesaChannel | IAirtelChannel;
+  abstract getChannelImplementation(): IMpesaChannel | IAirtelChannel;
 
   async initiate(
     payload: PaymentInitiationPayload,
@@ -76,72 +78,11 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         );
       }
 
-      let channelResponse;
-
-      try {
-        this.metricsService.incrementApiCall(
-          payload.partnerId,
-          this.getChannel(),
-        );
-
-        if (this.getChannel() === PaymentChannel.MPESA) {
-          const mpesaChannel = this.getChannelImplementation() as IMpesaChannel;
-          channelResponse = await mpesaChannel.stkPush({
-            phoneNumber: payload.customerId,
-            amount: payload.amount,
-            accountReference: payload.reference,
-            transactionDesc: `Payment for ${this.getPartner()}`,
-            partnerId: payload.partnerId,
-          });
-        } else if (this.getChannel() === PaymentChannel.AIRTEL) {
-          const airtelChannel =
-            this.getChannelImplementation() as IAirtelChannel;
-          channelResponse = await airtelChannel.directDebit({
-            phoneNumber: payload.customerId,
-            amount: payload.amount,
-            reference: payload.reference,
-            partnerId: payload.partnerId,
-          });
-        }
-      } catch (error) {
-        if (error.response) {
-          const status = error.response.status;
-          if (status >= 400 && status < 500) {
-            this.metricsService.incrementApiError4xx(
-              payload.partnerId,
-              this.getChannel(),
-              status,
-            );
-          } else if (status >= 500) {
-            this.metricsService.incrementApiError5xx(
-              payload.partnerId,
-              this.getChannel(),
-              status,
-            );
-          }
-        } else if (error.code === 'ECONNREFUSED') {
-          this.metricsService.incrementConnectionRefused(
-            payload.partnerId,
-            this.getChannel(),
-          );
-        } else if (error.code === 'ETIMEDOUT') {
-          this.metricsService.incrementApiTimeout(
-            payload.partnerId,
-            this.getChannel(),
-          );
-        }
-        throw error;
-      }
-
-      const transactionId =
-        channelResponse?.transactionId ||
-        this.generateTransactionId(this.getPartner(), this.getChannel());
-
       await this.paymentRepository.create({
-        transactionId,
         partner_id: payload.partnerId,
         channel: this.getChannel(),
         customerId: payload.customerId,
+        phoneNumber: payload.customerId,
         amount: payload.amount,
         currency: payload.currency,
         status: 'pending',
@@ -150,26 +91,15 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
         processed: false,
       });
 
-      await this.queueService.addStatusCheckJob(
-        {
-          transactionId,
-          partnerId: payload.partnerId,
-          channel: this.getChannel(),
-        },
-        {
-          delay: 5000,
-        },
-      );
+      await this.queueService.addPaymentInitiationJob(payload.reference, {
+        delay: 0,
+      });
 
       const response: PaymentInitiationResponse = {
-        transactionId,
-        status: channelResponse?.status || 'pending',
+        status: 'pending',
         amount: payload.amount,
         currency: payload.currency,
-        timestamp: channelResponse?.timestamp
-          ? new Date(channelResponse.timestamp)
-          : new Date(),
-        channelResponse,
+        timestamp: new Date(),
       };
 
       return response;
@@ -231,75 +161,104 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
     try {
       const transactionId = this.extractTransactionId(payload);
 
-      const payment = await this.paymentRepository.findByTransactionId(
-        transactionId,
-      );
-      if (!payment) {
-        throw new TransactionNotFoundException(transactionId);
-      }
+      const lockKey = this.buildCallbackLockKey(transactionId);
+      const acquired = await this.acquireCallbackLock(lockKey);
 
-      this.metricsService.incrementWebhookReceived(payment.partner_id);
-
-      if (payment.processed) {
+      if (!acquired) {
         this.logger.warn(
-          `Duplicate callback for transaction: ${transactionId}`,
+          `Callback lock not acquired for transaction ${transactionId}`,
         );
+        const existingPayment =
+          await this.paymentRepository.findByTransactionId(transactionId);
+        if (!existingPayment) {
+          throw new TransactionNotFoundException(transactionId);
+        }
         return {
           transactionId,
-          status: payment.status,
-          amount: payment.amount,
-          currency: payment.currency,
-          timestamp: new Date(payment.updatedAt),
+          status: existingPayment.status,
+          amount: existingPayment.amount,
+          currency: existingPayment.currency,
+          timestamp: new Date(existingPayment.updatedAt),
           isValid: true,
         };
       }
 
-      const config = await this.getChannelImplementation().loadConfig(
-        this.getPartner(),
-      );
-      const isValid = this.getChannelImplementation().validateCallback(
-        payload,
-        config.config.webhookSecret,
-      );
-
-      if (!isValid) {
-        throw new InvalidCallbackSignatureException();
-      }
-
-      const status = this.extractStatusFromCallback(payload);
-
-      await this.paymentRepository.update(transactionId, {
-        status,
-        processed: true,
-      });
-
-      await this.publishPaymentResult(payment, status);
-
-      this.metricsService.incrementWebhookProcessed(payment.partner_id, status);
-
-      if (status === 'completed') {
-        this.metricsService.incrementPaymentSuccess(
-          payment.partner_id,
-          payment.channel as string,
+      try {
+        const payment = await this.paymentRepository.findByTransactionId(
+          transactionId,
         );
-        const duration =
-          (new Date().getTime() - payment.createdAt.getTime()) / 1000;
-        this.metricsService.recordPaymentDuration(
-          payment.partner_id,
-          payment.channel as string,
+        if (!payment) {
+          throw new TransactionNotFoundException(transactionId);
+        }
+
+        this.metricsService.incrementWebhookReceived(payment.partner_id);
+
+        if (payment.processed) {
+          this.logger.warn(
+            `Duplicate callback for transaction: ${transactionId}`,
+          );
+          return {
+            transactionId,
+            status: payment.status,
+            amount: payment.amount,
+            currency: payment.currency,
+            timestamp: new Date(payment.updatedAt),
+            isValid: true,
+          };
+        }
+
+        const config = await this.getChannelImplementation().loadConfig(
+          this.getPartner(),
+        );
+        const isValid = this.getChannelImplementation().validateCallback(
+          payload,
+          config.config.webhookSecret,
+        );
+
+        if (!isValid) {
+          throw new InvalidCallbackSignatureException();
+        }
+
+        const status = this.extractStatusFromCallback(payload);
+
+        await this.paymentRepository.update(transactionId, {
           status,
-          duration,
-        );
-      }
+          processed: true,
+        });
 
-      return {
-        transactionId,
-        status,
-        amount: payment.amount,
-        currency: payment.currency,
-        timestamp: new Date(),
-        isValid: true,
-      };
+        await this.publishPaymentResult(payment, status);
+
+        this.metricsService.incrementWebhookProcessed(
+          payment.partner_id,
+          status,
+        );
+
+        if (status === 'completed') {
+          this.metricsService.incrementPaymentSuccess(
+            payment.partner_id,
+            payment.channel as string,
+          );
+          const duration =
+            (new Date().getTime() - payment.createdAt.getTime()) / 1000;
+          this.metricsService.recordPaymentDuration(
+            payment.partner_id,
+            payment.channel as string,
+            status,
+            duration,
+          );
+        }
+
+        return {
+          transactionId,
+          status,
+          amount: payment.amount,
+          currency: payment.currency,
+          timestamp: new Date(),
+          isValid: true,
+        };
+      } finally {
+        await this.releaseCallbackLock(lockKey);
+      }
     } catch (error) {
       this.metricsService.incrementWebhookFailed(
         this.getPartner(),
@@ -393,5 +352,23 @@ export abstract class BasePaymentExecutor implements IPaymentExecutor {
     } catch (error) {
       this.logger.error(`Failed to notify Aspin: ${error.message}`);
     }
+  }
+
+  protected buildCallbackLockKey(transactionId: string): string {
+    return `callback:${this.getPartner()}:${transactionId}`;
+  }
+
+  protected async acquireCallbackLock(
+    key: string,
+    ttlSeconds = 30,
+  ): Promise<boolean> {
+    const client = this.redisProvider.getClient();
+    const result = await client.set(key, '1', { NX: true, EX: ttlSeconds });
+    return result === 'OK';
+  }
+
+  protected async releaseCallbackLock(key: string): Promise<void> {
+    const client = this.redisProvider.getClient();
+    await client.del(key);
   }
 }

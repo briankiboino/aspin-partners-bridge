@@ -10,6 +10,7 @@ export interface InitiatePaymentPayload {
   customer_id: string;
   reference: string;
   partner_id: string;
+  phoneNumber: string;
   channel: PaymentChannel;
   transactionId?: string;
   metadata?: Record<string, any>;
@@ -29,6 +30,10 @@ export class InitiatePaymentDto {
   @IsString()
   @IsNotEmpty()
   customer_id: string;
+
+  @IsString()
+  @IsNotEmpty()
+  phoneNumber: string;
 
   @IsString()
   @IsNotEmpty()

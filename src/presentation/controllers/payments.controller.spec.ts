@@ -48,6 +48,7 @@ describe('PaymentsController', () => {
       reference: 'ref_123',
       channel: PaymentChannel.MPESA,
       partner_id: 'partner_123',
+      phoneNumber: '254700000000',
     };
 
     it('should successfully initiate payment', async () => {
