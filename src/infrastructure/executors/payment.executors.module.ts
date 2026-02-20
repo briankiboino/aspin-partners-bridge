@@ -8,6 +8,7 @@ import { RepositoryModule } from '../repositories/repository.module';
 import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 import { BullMQModule } from '../queue/bullmq.module';
 import { AdaptersModule } from '../adapters/adapters.module';
+import { RedisModule } from '../database/redis.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AdaptersModule } from '../adapters/adapters.module';
     RabbitMQModule,
     forwardRef(() => BullMQModule),
     AdaptersModule,
+    RedisModule,
   ],
   providers: [
     PaymentExecutorBuilder,

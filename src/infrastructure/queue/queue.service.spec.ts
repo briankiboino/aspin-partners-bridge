@@ -6,6 +6,9 @@ import { PaymentExecutorBuilder } from '../executors/builder/payment.executor.bu
 import { QueueTYPE, JobTYPE } from 'src/shared/constants/queue';
 import { PaymentChannel } from 'src/shared/constants/payments';
 import { Queue, Worker } from 'bullmq';
+import { MetricsService } from '../monitoring/metrics.service';
+import { PaymentRepositoryImpl } from '../repositories/payments.postgres.repository';
+import { TransactionNotFoundException } from 'src/shared/exceptions/payment.exceptions';
 
 jest.mock('../executors/builder/payment.executor.builder', () => ({
   PaymentExecutorBuilder: jest.fn().mockImplementation(() => ({
@@ -36,10 +39,22 @@ describe('QueueServiceImpl', () => {
   let configService: ConfigService;
   let executorBuilder: PaymentExecutorBuilder;
   let paymentsQueue: any;
+  let metricsService: MetricsService;
+  let paymentRepository: any;
+
+  const mockMpesaChannel = {
+    stkPush: jest.fn(),
+  } as any;
+
+  const mockAirtelChannel = {
+    directDebit: jest.fn(),
+  } as any;
 
   const mockExecutor = {
     statusCheck: jest.fn(),
-  };
+    initiate: jest.fn(),
+    getChannelImplementation: jest.fn(() => mockMpesaChannel),
+  } as any;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -62,7 +77,23 @@ describe('QueueServiceImpl', () => {
           },
         },
         {
-          provide: getQueueToken(QueueTYPE.PAYMENTS),
+          provide: PaymentRepositoryImpl,
+          useValue: {
+            findByReference: jest.fn(),
+          },
+        },
+        {
+          provide: MetricsService,
+          useValue: {
+            incrementApiCall: jest.fn(),
+            incrementApiError4xx: jest.fn(),
+            incrementApiError5xx: jest.fn(),
+            incrementConnectionRefused: jest.fn(),
+            incrementApiTimeout: jest.fn(),
+          },
+        },
+        {
+          provide: getQueueToken(QueueTYPE.PAYMENT_STATUS_CHECK),
           useValue: {
             add: jest.fn(),
           },
@@ -75,7 +106,9 @@ describe('QueueServiceImpl', () => {
     executorBuilder = module.get<PaymentExecutorBuilder>(
       PaymentExecutorBuilder,
     );
-    paymentsQueue = module.get(getQueueToken(QueueTYPE.PAYMENTS));
+    paymentsQueue = module.get(getQueueToken(QueueTYPE.PAYMENT_STATUS_CHECK));
+    metricsService = module.get<MetricsService>(MetricsService);
+    paymentRepository = module.get(PaymentRepositoryImpl);
   });
 
   afterEach(() => {
@@ -93,7 +126,7 @@ describe('QueueServiceImpl', () => {
       await service.onModuleInit();
 
       expect(Queue).toHaveBeenCalledWith(
-        JobTYPE.PAYMENT_STATUS_CHECK,
+        QueueTYPE.PAYMENT_STATUS_CHECK,
         expect.any(Object),
       );
       expect(Worker).toHaveBeenCalledWith(
@@ -221,6 +254,271 @@ describe('QueueServiceImpl', () => {
         failed: 4,
         total: 3,
       });
+    });
+  });
+
+  describe('addPaymentInitiationJob', () => {
+    beforeEach(async () => {
+      await service.onModuleInit();
+    });
+
+    it('should add job to payment initiation queue', async () => {
+      const reference = 'ref-123';
+      const options = { delay: 2000 };
+
+      const mockQueueInstance = (service as any).paymentInitiationQueue;
+
+      await service.addPaymentInitiationJob(reference, options);
+
+      expect(mockQueueInstance.add).toHaveBeenCalledWith(
+        JobTYPE.PAYMENT_INITIATION,
+        { reference },
+        expect.objectContaining({
+          delay: 2000,
+          jobId: `payment-check-${reference}`,
+        }),
+      );
+    });
+  });
+
+  describe('processPaymentInitiationJob', () => {
+    const baseJob = {
+      data: {
+        reference: 'ref-123',
+        partnerId: 'partner_1',
+        channel: PaymentChannel.MPESA,
+      },
+    };
+
+    beforeEach(async () => {
+      await service.onModuleInit();
+      mockExecutor.statusCheck.mockClear();
+      mockExecutor.initiate.mockClear();
+      mockExecutor.getChannelImplementation.mockClear();
+      mockMpesaChannel.stkPush.mockClear();
+      mockAirtelChannel.directDebit.mockClear();
+
+      const paymentRepositoryMock = {
+        findByReference: jest.fn(),
+      };
+      const metricsMock = {
+        incrementApiCall: jest.fn(),
+        incrementApiError4xx: jest.fn(),
+        incrementApiError5xx: jest.fn(),
+        incrementConnectionRefused: jest.fn(),
+        incrementApiTimeout: jest.fn(),
+      } as unknown as MetricsService;
+
+      (service as any).paymentRepository = paymentRepositoryMock;
+      (service as any).metricsService = metricsMock;
+      paymentRepository = paymentRepositoryMock;
+      metricsService = metricsMock;
+    });
+
+    it('should process MPESA payment initiation job and enqueue status check', async () => {
+      paymentRepository.findByReference.mockResolvedValue({
+        amount: 100,
+        currency: 'KES',
+        customerId: 'cust-1',
+        phoneNumber: '254700000000',
+        reference: 'ref-123',
+      });
+      mockExecutor.getChannelImplementation.mockReturnValue(mockMpesaChannel);
+      mockMpesaChannel.stkPush.mockResolvedValue({
+        transactionId: 'txn-mpesa-123',
+        status: 'pending',
+        amount: 100,
+        currency: 'KES',
+        timestamp: new Date().toISOString(),
+      });
+      const addStatusCheckJobSpy = jest
+        .spyOn(service, 'addStatusCheckJob')
+        .mockResolvedValue(undefined);
+
+      await (service as any).processPaymentInitiationJob(baseJob);
+
+      expect(executorBuilder.getExecutor).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.MPESA,
+      );
+      expect(paymentRepository.findByReference).toHaveBeenCalledWith('ref-123');
+      expect(metricsService.incrementApiCall).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.MPESA,
+      );
+      expect(mockMpesaChannel.stkPush).toHaveBeenCalledWith({
+        amount: 100,
+        phoneNumber: '254700000000',
+        accountReference: 'ref-123',
+        partnerId: 'partner_1',
+      });
+      expect(addStatusCheckJobSpy).toHaveBeenCalledWith(
+        {
+          transactionId: 'txn-mpesa-123',
+          partnerId: 'partner_1',
+          channel: PaymentChannel.MPESA,
+        },
+        {
+          delay: 10000,
+        },
+      );
+    });
+
+    it('should process AIRTEL payment initiation job and enqueue status check', async () => {
+      const airtelJob = {
+        data: {
+          reference: 'ref-123',
+          partnerId: 'partner_1',
+          channel: PaymentChannel.AIRTEL,
+        },
+      };
+
+      paymentRepository.findByReference.mockResolvedValue({
+        amount: 200,
+        currency: 'KES',
+        customerId: 'cust-1',
+        phoneNumber: '254711111111',
+        reference: 'ref-123',
+      });
+      mockExecutor.getChannelImplementation.mockReturnValue(mockAirtelChannel);
+      mockAirtelChannel.directDebit.mockResolvedValue({
+        transactionId: 'txn-airtel-123',
+        status: 'pending',
+        amount: 200,
+        currency: 'KES',
+        timestamp: new Date().toISOString(),
+      });
+      const addStatusCheckJobSpy = jest
+        .spyOn(service, 'addStatusCheckJob')
+        .mockResolvedValue(undefined);
+
+      await (service as any).processPaymentInitiationJob(airtelJob);
+
+      expect(executorBuilder.getExecutor).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.AIRTEL,
+      );
+      expect(paymentRepository.findByReference).toHaveBeenCalledWith('ref-123');
+      expect(metricsService.incrementApiCall).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.AIRTEL,
+      );
+      expect(mockAirtelChannel.directDebit).toHaveBeenCalledWith({
+        amount: 200,
+        phoneNumber: '254711111111',
+        reference: 'ref-123',
+        partnerId: 'partner_1',
+      });
+      expect(addStatusCheckJobSpy).toHaveBeenCalledWith(
+        {
+          transactionId: 'txn-airtel-123',
+          partnerId: 'partner_1',
+          channel: PaymentChannel.AIRTEL,
+        },
+        {
+          delay: 10000,
+        },
+      );
+    });
+
+    it('should throw TransactionNotFoundException when payment order is missing', async () => {
+      paymentRepository.findByReference.mockResolvedValue(null);
+
+      await expect(
+        (service as any).processPaymentInitiationJob(baseJob),
+      ).rejects.toBeInstanceOf(TransactionNotFoundException);
+    });
+
+    it('should record 4xx API error metrics and rethrow', async () => {
+      paymentRepository.findByReference.mockResolvedValue({
+        amount: 100,
+        currency: 'KES',
+        customerId: 'cust-1',
+        phoneNumber: '254700000000',
+        reference: 'ref-123',
+      });
+      const error = { response: { status: 400 } };
+      mockExecutor.getChannelImplementation.mockReturnValue(mockMpesaChannel);
+      mockMpesaChannel.stkPush.mockRejectedValue(error);
+
+      await expect(
+        (service as any).processPaymentInitiationJob(baseJob),
+      ).rejects.toBe(error as any);
+
+      expect(metricsService.incrementApiError4xx).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.MPESA,
+        400,
+      );
+      expect(metricsService.incrementApiError5xx).not.toHaveBeenCalled();
+    });
+
+    it('should record 5xx API error metrics and rethrow', async () => {
+      paymentRepository.findByReference.mockResolvedValue({
+        amount: 100,
+        currency: 'KES',
+        customerId: 'cust-1',
+        phoneNumber: '254700000000',
+        reference: 'ref-123',
+      });
+      const error = { response: { status: 500 } };
+      mockExecutor.getChannelImplementation.mockReturnValue(mockMpesaChannel);
+      mockMpesaChannel.stkPush.mockRejectedValue(error);
+
+      await expect(
+        (service as any).processPaymentInitiationJob(baseJob),
+      ).rejects.toBe(error as any);
+
+      expect(metricsService.incrementApiError5xx).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.MPESA,
+        500,
+      );
+      expect(metricsService.incrementApiError4xx).not.toHaveBeenCalled();
+    });
+
+    it('should record connection refused metrics and rethrow', async () => {
+      paymentRepository.findByReference.mockResolvedValue({
+        amount: 100,
+        currency: 'KES',
+        customerId: 'cust-1',
+        phoneNumber: '254700000000',
+        reference: 'ref-123',
+      });
+      const error = { code: 'ECONNREFUSED' };
+      mockExecutor.getChannelImplementation.mockReturnValue(mockMpesaChannel);
+      mockMpesaChannel.stkPush.mockRejectedValue(error);
+
+      await expect(
+        (service as any).processPaymentInitiationJob(baseJob),
+      ).rejects.toBe(error as any);
+
+      expect(metricsService.incrementConnectionRefused).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.MPESA,
+      );
+    });
+
+    it('should record timeout metrics and rethrow', async () => {
+      paymentRepository.findByReference.mockResolvedValue({
+        amount: 100,
+        currency: 'KES',
+        customerId: 'cust-1',
+        phoneNumber: '254700000000',
+        reference: 'ref-123',
+      });
+      const error = { code: 'ETIMEDOUT' };
+      mockExecutor.getChannelImplementation.mockReturnValue(mockMpesaChannel);
+      mockMpesaChannel.stkPush.mockRejectedValue(error);
+
+      await expect(
+        (service as any).processPaymentInitiationJob(baseJob),
+      ).rejects.toBe(error as any);
+
+      expect(metricsService.incrementApiTimeout).toHaveBeenCalledWith(
+        'partner_1',
+        PaymentChannel.MPESA,
+      );
     });
   });
 });

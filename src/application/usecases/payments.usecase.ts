@@ -39,6 +39,7 @@ export class PaymentsUseCaseImpl implements PaymentsUseCase {
       amount: payload.amount,
       currency: payload.currency,
       customerId: payload.customer_id,
+      phoneNumber: payload.phoneNumber,
       reference: payload.reference,
       partnerId: payload.partner_id,
       channel: payload.channel,

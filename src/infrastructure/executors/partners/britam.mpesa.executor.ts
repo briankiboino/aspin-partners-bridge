@@ -10,6 +10,7 @@ import { QueueServiceImpl } from '../../queue/queue.service.impl';
 import { AspinAdapter } from 'src/application/interfaces/aspin.adapter.interface';
 import { MetricsService } from '../../monitoring/metrics.service';
 import { ConfigService } from '@nestjs/config';
+import { RedisProvider } from '../../database/redis.provider';
 
 @Injectable()
 export class BritamMpesaExecutor extends BasePaymentExecutor {
@@ -21,6 +22,7 @@ export class BritamMpesaExecutor extends BasePaymentExecutor {
     metricsService: MetricsService,
     private readonly britamMpesaChannel: BritamMpesaChannel,
     configService: ConfigService,
+    redisProvider: RedisProvider,
   ) {
     super(
       paymentRepository,
@@ -29,6 +31,7 @@ export class BritamMpesaExecutor extends BasePaymentExecutor {
       aspinAdapter,
       metricsService,
       configService,
+      redisProvider,
     );
   }
 
@@ -40,7 +43,7 @@ export class BritamMpesaExecutor extends BasePaymentExecutor {
     return PaymentChannel.MPESA;
   }
 
-  protected getChannelImplementation() {
+  getChannelImplementation() {
     return this.britamMpesaChannel;
   }
 }

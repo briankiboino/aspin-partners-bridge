@@ -2,7 +2,7 @@ export interface MpesaStkPushPayload {
   phoneNumber: string;
   amount: number;
   accountReference: string;
-  transactionDesc: string;
+  transactionDesc?: string;
   partnerId: string;
 }
 

@@ -14,6 +14,7 @@ import { QueueServiceImpl } from '../queue/queue.service.impl';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { MetricsService } from '../monitoring/metrics.service';
 import { ConfigService } from '@nestjs/config';
+import { RedisProvider } from '../database/redis.provider';
 import { PaymentChannel } from '../../shared/constants/payments';
 import {
   IMpesaChannel,
@@ -40,9 +41,10 @@ class TestExecutor extends BasePaymentExecutor {
     aspin: any,
     metrics: any,
     config: any,
+    redisProvider: any,
     private channelImplementation: any,
   ) {
-    super(repository, queue, rabbit, aspin, metrics, config);
+    super(repository, queue, rabbit, aspin, metrics, config, redisProvider);
   }
 }
 
@@ -55,6 +57,7 @@ describe('BasePaymentExecutor', () => {
   let metricsService: any;
   let configService: any;
   let mockChannel: any;
+  let redisProvider: any;
 
   beforeEach(async () => {
     paymentRepository = {
@@ -67,6 +70,7 @@ describe('BasePaymentExecutor', () => {
 
     queueService = {
       addStatusCheckJob: jest.fn(),
+      addPaymentInitiationJob: jest.fn(),
     };
 
     rabbitmqService = {
@@ -95,6 +99,13 @@ describe('BasePaymentExecutor', () => {
 
     configService = {
       get: jest.fn().mockReturnValue('test-secret'),
+    };
+
+    redisProvider = {
+      getClient: jest.fn().mockReturnValue({
+        set: jest.fn().mockResolvedValue('OK'),
+        del: jest.fn().mockResolvedValue(1),
+      }),
     };
 
     mockChannel = {
@@ -132,8 +143,12 @@ describe('BasePaymentExecutor', () => {
           useValue: configService,
         },
         {
+          provide: RedisProvider,
+          useValue: redisProvider,
+        },
+        {
           provide: TestExecutor,
-          useFactory: (repo, queue, rabbit, aspin, metrics, config) =>
+          useFactory: (repo, queue, rabbit, aspin, metrics, config, redis) =>
             new TestExecutor(
               repo,
               queue,
@@ -141,6 +156,7 @@ describe('BasePaymentExecutor', () => {
               aspin,
               metrics,
               config,
+              redis,
               mockChannel,
             ),
           inject: [
@@ -150,6 +166,7 @@ describe('BasePaymentExecutor', () => {
             'AspinAdapter',
             MetricsService,
             ConfigService,
+            RedisProvider,
           ],
         },
       ],
@@ -166,40 +183,35 @@ describe('BasePaymentExecutor', () => {
       currency: 'KES',
       reference: 'REF123',
       channel: PaymentChannel.MPESA,
+      phoneNumber: '254700000000',
     };
 
     describe('MPESA', () => {
       it('should successfully initiate payment via MPESA', async () => {
         executor.channelType = PaymentChannel.MPESA;
         paymentRepository.findByReference.mockResolvedValue(null);
-        mockChannel.stkPush.mockResolvedValue({
-          transactionId: 'TXN123',
-          status: 'pending',
-          timestamp: new Date().toISOString(),
-        });
 
         const result = await executor.initiate(payload);
 
         expect(paymentRepository.findByReference).toHaveBeenCalledWith(
           payload.reference,
         );
-        expect(mockChannel.stkPush).toHaveBeenCalledWith({
-          phoneNumber: payload.customerId,
-          amount: payload.amount,
-          accountReference: payload.reference,
-          transactionDesc: `Payment for TEST_PARTNER`,
-          partnerId: payload.partnerId,
-        });
         expect(paymentRepository.create).toHaveBeenCalledWith(
           expect.objectContaining({
-            transactionId: 'TXN123',
             status: 'pending',
             reference: payload.reference,
             channel: PaymentChannel.MPESA,
           }),
         );
-        expect(queueService.addStatusCheckJob).toHaveBeenCalled();
-        expect(result.transactionId).toBe('TXN123');
+        expect(queueService.addPaymentInitiationJob).toHaveBeenCalledWith(
+          payload.reference,
+          { delay: 0 },
+        );
+        expect(result).toMatchObject({
+          status: 'pending',
+          amount: payload.amount,
+          currency: payload.currency,
+        });
       });
     });
 
@@ -209,32 +221,28 @@ describe('BasePaymentExecutor', () => {
         const airtelPayload = { ...payload, channel: PaymentChannel.AIRTEL };
 
         paymentRepository.findByReference.mockResolvedValue(null);
-        mockChannel.directDebit.mockResolvedValue({
-          transactionId: 'AIRTEL_TXN_123',
-          status: 'pending',
-          timestamp: new Date().toISOString(),
-        });
 
         const result = await executor.initiate(airtelPayload);
 
         expect(paymentRepository.findByReference).toHaveBeenCalledWith(
           airtelPayload.reference,
         );
-        expect(mockChannel.directDebit).toHaveBeenCalledWith({
-          phoneNumber: airtelPayload.customerId,
-          amount: airtelPayload.amount,
-          reference: airtelPayload.reference,
-          partnerId: airtelPayload.partnerId,
-        });
         expect(paymentRepository.create).toHaveBeenCalledWith(
           expect.objectContaining({
-            transactionId: 'AIRTEL_TXN_123',
             status: 'pending',
             reference: airtelPayload.reference,
             channel: PaymentChannel.AIRTEL,
           }),
         );
-        expect(result.transactionId).toBe('AIRTEL_TXN_123');
+        expect(queueService.addPaymentInitiationJob).toHaveBeenCalledWith(
+          airtelPayload.reference,
+          { delay: 0 },
+        );
+        expect(result).toMatchObject({
+          status: 'pending',
+          amount: airtelPayload.amount,
+          currency: airtelPayload.currency,
+        });
       });
     });
 
@@ -250,12 +258,12 @@ describe('BasePaymentExecutor', () => {
       it('should handle channel failure', async () => {
         executor.channelType = PaymentChannel.MPESA;
         paymentRepository.findByReference.mockResolvedValue(null);
-        mockChannel.stkPush.mockRejectedValue(new Error('Channel Error'));
-
-        await expect(executor.initiate(payload)).rejects.toThrow(
-          'Channel Error',
+        queueService.addPaymentInitiationJob.mockRejectedValue(
+          new Error('Queue Error'),
         );
-        expect(paymentRepository.create).not.toHaveBeenCalled();
+
+        await expect(executor.initiate(payload)).rejects.toThrow('Queue Error');
+        expect(paymentRepository.create).toHaveBeenCalled();
       });
 
       it('should handle repository failure during creation', async () => {

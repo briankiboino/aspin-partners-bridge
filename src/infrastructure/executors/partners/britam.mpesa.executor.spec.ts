@@ -7,6 +7,7 @@ import { QueueServiceImpl } from '../../queue/queue.service.impl';
 import { RabbitMQService } from '../../rabbitmq/rabbitmq.service';
 import { MetricsService } from '../../monitoring/metrics.service';
 import { ConfigService } from '@nestjs/config';
+import { RedisProvider } from '../../database/redis.provider';
 
 jest.mock('../../repositories/payments.postgres.repository', () => ({
   PaymentRepositoryImpl: class MockPaymentRepositoryImpl {},
@@ -66,6 +67,15 @@ describe('BritamMpesaExecutor', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn().mockReturnValue('test-secret'),
+          },
+        },
+        {
+          provide: RedisProvider,
+          useValue: {
+            getClient: jest.fn().mockReturnValue({
+              set: jest.fn().mockResolvedValue('OK'),
+              del: jest.fn().mockResolvedValue(1),
+            }),
           },
         },
       ],

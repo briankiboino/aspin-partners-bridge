@@ -10,13 +10,13 @@ import {
 @Entity('payments')
 export class PaymentEntity {
   @PrimaryColumn()
+  reference: string;
+
+  @Column()
   transactionId: string;
 
   @Column()
   partner_id: string;
-
-  @Column()
-  reference: string;
 
   @Column()
   channel: string | PaymentChannel;
@@ -35,6 +35,9 @@ export class PaymentEntity {
 
   @Column()
   gateway: string;
+
+  @Column()
+  phoneNumber: string;
 
   @Column({ default: false })
   processed: boolean;
